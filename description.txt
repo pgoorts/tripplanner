@@ -1,0 +1,28 @@
+Description: An android app to plan trips and to have all relevant information during a trips. Similar to wanderlog or tripit
+
+Concepts: 
+- Trip: A multiday thing with a start date, end date, and a destination
+- Event: Belongs to a trip. Has a start data, end date, and optionally a start time, end time, description. Examples are a flight, a  museum visit, a hotel stay
+- Note: Belongs to a trip or an event. Can be a text block, a list (like packing or todo), an url, a document on Google docs or sheets, a file in Google drive
+- Reminder: A block of text that has a date and time, and describes something that needs to happen. Belongs to a trip or an event
+
+
+Features: 
+- Home: show a list of trips. tapping a trip opens the trip
+- Home: button to add a trip
+- Opened trip: Show a list of the events. Tapping an event opens the event. Events are divided in sections per date. Per section, the events without start time at that date are on top, then sorted per start time. For multiday events, the event is shown in each section, and shows the day and total number of days (eg. day 2 of 5)
+- Opened trip: Show also a list of notes. Tapping a note opens the note
+- Opened trip: Show also a list of reminders. Tapping a reminder opens the reminder
+- Opened trip: button to add an event
+- Opened trip: button to add a note
+- Opened trip: button to add a reminder
+- Opened trip: allow to share the trip with someone else
+- Opened trip: export button, which creates a block of text with all the info. This export can be shared
+- Opened event: Show all details, and allows to edit the details
+- Opened event: Show list of notes
+- Opened event: button to add a note
+- Opened event: button to add a reminder
+- Opened note: Show all details, and allows to edit the details
+- Opened note: When containing a link to google drive, clicking the link will open the document
+- Opened note: When containing an url, clicking the link will open the url
+- Data: must be stored in the cloud, and be shareable

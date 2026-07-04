@@ -1,0 +1,10 @@
+We are going to build an app on Android to manage and plan trips we will take. The execution will go in phases, where the user (me) will have to conform before moving on. Each phase must document the result, because each phase is executed by a different agent. There will be no LLM context shared, except this documentation and the code thus far. This are the phases: 
+
+* Project description review: read the description of the project, ask questions when things are unclear or ambiguous. Wait for confirmation before moving on
+* Technology stack proposals. Propose what libraries and services we will use. This includes services to gather data. Document this. Wait for confirmation before moving on
+* Data structure design. Think about the database, what data goes where, and how the syncing will work. Wait for confirmation before moving on
+* Mockup images. Generate images of the app to show how it will look like (more or less, this doesn't need to be pixel perfect). This will help to design user flow and layout. Wait for confirmation before moving on
+* Generate an implementation plan, divided in blocks, and each block divided in steps. Block 1 is always setting up the build environment. Each block must end with a verification step (possibly by me). Wait for confirmation before moving on
+* Bug fixing. You will receive a list of bugs. Go over them one by one. 
+
+You will find the project description in description.txt
