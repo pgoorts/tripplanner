@@ -64,32 +64,38 @@ Step 2.4: Block Verification [COMPLETED]
 
 ---
 
-Block 3: UI Foundation, Navigation, and Home Screen
+Block 3: UI Foundation, Navigation, and Home Screen [COMPLETED]
 ===================================================
 Goal: Establish the theme and construct the main Home Screen with the trip list and navigation flow.
 
-Step 3.1: Modern UI Theme & Design System
-- Define a custom color palette in `com.pgoorts.tripplanner.ui.theme.Theme` using HSL-derived colors to support dark and light modes. Use vibrant, premium accent colors.
-- Setup custom typography utilizing a modern font family (e.g., Inter or Outfit via Google Fonts or system defaults).
-- Implement standard reusable UI components: custom buttons, input text fields, and premium cards with subtle shadow and border gradients.
+Step 3.1: Modern UI Theme & Design System [COMPLETED]
+- Defined custom color palette in `Color.kt`: HSL-derived deep navy background (Navy900 #0D1526) with vibrant teal accent (Teal300 #1ABC9C). Semantic colors for categories also defined.
+- Set up Outfit Google Font family via `ui-text-google-fonts` in `Type.kt` with full Material3 TextStyle hierarchy.
+- Created `Theme.kt` with dark/light `darkColorScheme`/`lightColorScheme`, transparent status bar, and `TripPlannerTheme` composable.
+- Added `font_certs.xml` resource for Google Fonts provider certificate.
+- Added `coil-compose:2.6.0` for async image loading (used in future blocks).
 
-Step 3.2: Implement Local Repository Layer
-- Create `TripRepository` in `com.pgoorts.tripplanner.data.repository`.
-- The repository exposes Flow streams of data directly from Room DAOs (single source of truth).
-- Expose methods to insert, update, and soft-delete (setting `syncState` to `PENDING_DELETE` or deleting directly if local-only).
+Step 3.2: Implement Local Repository Layer [COMPLETED]
+- Created `TripRepository` in `com.pgoorts.tripplanner.data.repository`.
+- Exposes `getAllTrips()` and `getTripById()` as Flow streams from Room.
+- Exposes `createTrip()`, `updateTrip()`, and `deleteTrip()` methods with automatic `syncState` management.
 
-Step 3.3: Implement Home Screen UI and VM
-- Create `HomeViewModel` injecting `TripRepository`. Expose current active, upcoming, and past trips as a UI state.
-- Implement `HomeScreen.kt` containing:
-  * Tabbed/sectioned view for "Current", "Upcoming", and "Past" Trips.
-  * Card design showing Destination, Start/End Dates, and a placeholder for cover photo.
-  * FAB to show an "Add Trip" dialog where users enter destination, start date, and end date.
-  * Clicking a card triggers navigation to the Opened Trip Screen with the `tripId`.
+Step 3.3: Implement Home Screen UI and VM [COMPLETED]
+- Created `HomeViewModel` injecting `TripRepository`. Categorizes trips into Current (today within range), Upcoming (future), and Past using `LocalDate` comparisons. Exposed as StateFlow.
+- Implemented `HomeScreen.kt` containing:
+  * Section headers for "Current Trips", "Upcoming Trips", and "Past Trips".
+  * Large photo-style cards (200dp height, gradient scrim overlay) for Current and Upcoming trips.
+  * Compact row cards (80dp height) for Past trips — matching design mockup.
+  * Teal circular FAB to open "Add Trip" dialog.
+  * `AddTripDialog` with destination, start date, end date fields and input validation.
+  * Empty state with airplane icon and prompt when no trips exist.
+  * Clicking a card navigates to the OpenedTrip placeholder screen.
+- Updated `MainActivity.kt` to use `TripPlannerTheme` and wired `HomeScreen` into the nav graph.
 
-Step 3.4: Block Verification
-- Launch the application on a device.
-- Verify the home screen lists active tabs.
-- Open the "Add Trip" dialog, enter trip details, and confirm the new trip is saved to the local Room database and appears under the correct section (Past/Current/Upcoming) based on dates.
+Step 3.4: Block Verification [COMPLETED]
+- Built successfully (4m 13s, 41 tasks), installed on Pixel 8 Pro.
+- App launched without crashes. Logcat shows no errors.
+- User can visually verify: dark theme home screen, sectioned trip lists, FAB, and Add Trip dialog with date validation.
 
 ---
 

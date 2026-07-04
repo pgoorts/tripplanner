@@ -3,20 +3,15 @@ package com.pgoorts.tripplanner
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.pgoorts.tripplanner.ui.home.HomeScreen
+import com.pgoorts.tripplanner.ui.theme.TripPlannerTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 sealed class Screen(val route: String) {
@@ -41,84 +36,53 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+            TripPlannerTheme {
+                val navController = rememberNavController()
+                NavHost(
+                    navController = navController,
+                    startDestination = Screen.Home.route,
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    AppNavigation()
+                    composable(Screen.Home.route) {
+                        HomeScreen(
+                            onTripClick = { tripId ->
+                                navController.navigate(Screen.OpenedTrip.createRoute(tripId))
+                            },
+                            onProfileClick = {
+                                navController.navigate(Screen.Profile.route)
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.OpenedTrip.route,
+                        arguments = listOf(navArgument("tripId") { type = NavType.StringType })
+                    ) {
+                        // Placeholder — implemented in Block 4
+                        PlaceholderScreen("Opened Trip")
+                    }
+                    composable(
+                        route = Screen.OpenedEvent.route,
+                        arguments = listOf(navArgument("eventId") { type = NavType.StringType })
+                    ) {
+                        PlaceholderScreen("Opened Event")
+                    }
+                    composable(
+                        route = Screen.OpenedNote.route,
+                        arguments = listOf(navArgument("noteId") { type = NavType.StringType })
+                    ) {
+                        PlaceholderScreen("Opened Note")
+                    }
+                    composable(
+                        route = Screen.OpenedReminder.route,
+                        arguments = listOf(navArgument("reminderId") { type = NavType.StringType })
+                    ) {
+                        PlaceholderScreen("Opened Reminder")
+                    }
+                    composable(Screen.Profile.route) {
+                        PlaceholderScreen("Profile")
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-fun AppNavigation() {
-    val navController = rememberNavController()
-    NavHost(
-        navController = navController,
-        startDestination = Screen.Home.route
-    ) {
-        composable(Screen.Home.route) {
-            HomeScreenPlaceholder()
-        }
-        composable(
-            route = Screen.OpenedTrip.route,
-            arguments = listOf(navArgument("tripId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val tripId = backStackEntry.arguments?.getString("tripId") ?: ""
-            PlaceholderScreen(title = "Opened Trip Screen", detail = "Trip ID: $tripId")
-        }
-        composable(
-            route = Screen.OpenedEvent.route,
-            arguments = listOf(navArgument("eventId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val eventId = backStackEntry.arguments?.getString("eventId") ?: ""
-            PlaceholderScreen(title = "Opened Event Screen", detail = "Event ID: $eventId")
-        }
-        composable(
-            route = Screen.OpenedNote.route,
-            arguments = listOf(navArgument("noteId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val noteId = backStackEntry.arguments?.getString("noteId") ?: ""
-            PlaceholderScreen(title = "Opened Note Screen", detail = "Note ID: $noteId")
-        }
-        composable(
-            route = Screen.OpenedReminder.route,
-            arguments = listOf(navArgument("reminderId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val reminderId = backStackEntry.arguments?.getString("reminderId") ?: ""
-            PlaceholderScreen(title = "Opened Reminder Screen", detail = "Reminder ID: $reminderId")
-        }
-        composable(Screen.Profile.route) {
-            PlaceholderScreen(title = "Profile Screen", detail = "User Profile Settings")
-        }
-    }
-}
-
-@Composable
-fun HomeScreenPlaceholder() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Welcome to TripPlanner!",
-            style = MaterialTheme.typography.headlineMedium
-        )
-    }
-}
-
-@Composable
-fun PlaceholderScreen(title: String, detail: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "$title\n$detail",
-            style = MaterialTheme.typography.bodyLarge
-        )
     }
 }
