@@ -1,0 +1,145 @@
+TripPlanner Detailed Project Description
+========================================
+
+1. Purpose and Vision
+----------------------
+TripPlanner is a mobile application for the Android platform designed to consolidate all trip-related travel details, itineraries, notes, and reminders into a single, cohesive interface. Similar to services like Wanderlog or TripIt, the primary goal of the app is to serve as a reliable, central repository for travelers before and during their trips. 
+
+The application is built with an offline-first architecture, allowing users to access and edit all information without internet access, syncing changes once back online. All data is backed up to the cloud to support collaboration and multi-device access.
+
+2. Core Concepts & Domain Model
+--------------------------------
+The domain model consists of four primary entities: Trips, Events, Notes, and Reminders.
+
+### 2.1 Trip
+A Trip represents the high-level container for a journey.
+*   **Attributes**:
+    *   **Destination**: The city, region, or country of the trip.
+    *   **Start Date**: The calendar date when the trip begins.
+    *   **End Date**: The calendar date when the trip ends.
+*   **Relationships**:
+    *   Contains zero or more Events.
+    *   Contains zero or more Notes (associated with the trip as a whole).
+    *   Contains zero or more Reminders (associated with the trip as a whole).
+    *   Shared with zero or more Users (Co-owners or Viewers).
+
+### 2.2 Event
+An Event represents a specific scheduled activity or reservation within a Trip.
+*   **Attributes**:
+    *   **Title/Name**: E.g., "Flight LH190", "Colosseum Tour", "Grand Hotel Roma Check-in".
+    *   **Category**: A classification for the event (e.g., Flight, Lodging, Restaurant, Transit, Activity, Attraction) that dictates its icon and color scheme in the UI.
+    *   **Location** (Optional): The physical address or place name of the event.
+    *   **Timezone**: The local timezone of the event's location, ensuring event times remain correct regardless of the traveler's physical location.
+    *   **Start Date**: The date the event begins.
+    *   **Start Time** (Optional): The specific time the event begins.
+    *   **End Date**: The date the event ends.
+    *   **End Time** (Optional): The specific time the event ends.
+    *   **Description** (Optional): Text details, confirmation codes, notes, etc.
+*   **Relationships**:
+    *   Belongs to exactly one Trip.
+    *   Contains zero or more Notes specific to this event.
+    *   Contains zero or more Reminders specific to this event.
+
+### 2.3 Note
+A Note is a piece of information or reference material attached to either a Trip or a specific Event.
+*   **Types of Notes**:
+    *   **Text Block**: Freeform text notes.
+    *   **List (Interactive Checklist)**: E.g., packing lists or to-do lists, where users can interactively check and uncheck items.
+    *   **Web URL**: A link to a website.
+    *   **Google Doc/Sheet Link**: A link specifically recognized as a Google Document or Spreadsheet.
+    *   **Google Drive File Link**: A link to a file stored on Google Drive (e.g., PDFs, booking confirmations).
+*   **Relationships**:
+    *   Belongs to either a Trip or an Event.
+
+### 2.4 Reminder
+A Reminder is a time-sensitive notification or task associated with either a Trip or an Event.
+*   **Attributes**:
+    *   **Text**: Description of what needs to be done.
+    *   **Date**: The date the reminder is scheduled.
+    *   **Time**: The time the reminder should trigger.
+*   **Relationships**:
+    *   Belongs to either a Trip or an Event.
+
+### 2.5 Packing List Template
+A Packing List Template is a reusable, global category checklist of items to pack.
+*   **Attributes**:
+    *   **Title/Name**: E.g., "Medication", "Clothes", "Walking Clothes", "Plane Items".
+    *   **Items**: A list of packing items (strings) associated with this template.
+*   **Relationships**:
+    *   Owned by a User (synchronized with their account).
+    *   Can be imported and merged into any Trip or Event checklist Note.
+
+3. Detailed Feature Specifications
+----------------------------------
+
+### 3.1 Authentication & User Profile
+*   **Google Sign-in**: The app requires users to log in using their Google Account to access their trips, enable cloud synchronization, and support trip sharing.
+*   **Inner Circle / Favorite Contacts**: Users can save a list of frequently used email addresses (family, friends, co-travelers) in their profile settings. This list is cached locally and synchronized to the cloud.
+*   **Packing List Template Manager**: A global management screen where users can view, create, edit, and delete their custom Packing List Templates. Edits made here are global and sync to the cloud.
+
+### 3.2 Home Screen
+The landing screen of the application when launched (post-login).
+*   **Trip List**: Displays all trips the user has created or has been invited to (divided into past, current, and upcoming sections).
+*   **Add Trip Button**: A prominent floating action button (FAB) to create a new trip by entering a destination, start date, and end date.
+*   **Navigation**: Tapping any trip in the list navigates the user to the Opened Trip Screen.
+
+### 3.3 Opened Trip Screen
+This is the primary dashboard for an individual trip, containing three main views or tabs:
+
+#### 3.3.1 Events (Itinerary Timeline View)
+*   **Layout**: A chronological timeline grouped in sections per calendar date (from Start Date to End Date).
+*   **Event Sorting (Within a single date section)**:
+    1.  **All-Day / No Time Events**: Events without a specified start time are placed at the very top of that day's section.
+    2.  **Timed Events**: Sorted chronologically by start time.
+*   **Multi-day Events**:
+    *   If an event spans multiple days (e.g., a hotel stay from June 1st to June 5th), it is listed in the section for *each* day it spans.
+    *   Each day's entry shows the current day index and total duration (e.g., "Day 1 of 4", "Day 2 of 4", etc.).
+    *   On intermediate days (where the event doesn't start or end), it is treated as an all-day event and shown at the top of the day's section.
+*   **Add Event**: Button to create a new event.
+*   **Interaction**: Tapping an event opens the Opened Event Screen.
+
+#### 3.3.2 Notes View
+*   **Layout**: A list showing all notes associated directly with the Trip.
+*   **Add Note**: Button to create a new note (text, checklist, link, or Google Drive document).
+*   **Interaction**: Tapping a note opens the Opened Note Screen.
+
+#### 3.3.3 Reminders View
+*   **Layout**: A list of all reminders associated directly with the Trip, sorted chronologically by target date/time.
+*   **Add Reminder**: Button to create a new reminder.
+*   **Interaction**: Tapping a reminder opens the Opened Reminder Screen.
+
+#### 3.3.4 Sharing & Collaboration
+*   **Sharing mechanism**: Trips are shared by entering the recipient's Google email address. Once shared, the trip automatically appears on the recipient's Home Screen (if they are logged into the app with that email).
+*   **Quick-Share (Inner Circle)**: When sharing a trip, the app presents a list of the user's Favorite Contacts (Inner Circle) for single-tap selection, in addition to allowing freeform email entry.
+*   **Roles & Permissions**:
+    *   **Co-owner**: Has full read and write permissions, with equal rights to modify or delete the trip and manage other shares.
+    *   **Viewer**: Has read-only permissions and cannot edit or delete any trip details, events, notes, or reminders.
+*   **Export Trip**: Generates a complete, human-readable text document containing all details of the entire trip (including all events, notes, and reminders) without summarizing or omitting any information. This text can be copied to the clipboard or shared using the Android system share sheet (e.g., sent via email, messaging apps, etc.).
+
+### 3.4 Opened Event Screen
+Displays and allows editing of a specific event's details.
+*   **Details Editor**: View and modify title, category, location, timezone, dates, times, and description (disabled if user is a Viewer).
+*   **Map Quick-Link**: If the event has a location specified, clicking a map icon or the address opens the location in Google Maps (or another default mapping app on the device) for navigation.
+*   **Event Notes**: Displays a list of notes specific to this event.
+*   **Add Event Note**: Button to create and link a note directly to this event.
+*   **Event Reminders**: Displays a list of reminders specific to this event.
+*   **Add Event Reminder**: Button to create and link a reminder directly to this event.
+
+### 3.5 Opened Note Screen
+View and modify notes.
+*   **Interactive Checklist/Text Editor**: Allows editing the content of a text block or interactively checking/unchecking items in a checklist note (disabled for Viewers).
+*   **Construct from Templates**: When creating or editing a checklist note, the user has the option to populate/build the checklist by selecting one or more globally saved Packing List Templates (e.g. merging "Plane Items" and "Medication" while omitting "Car Items"). This action merges the items from all selected templates into the active checklist for that Trip/Event.
+*   **URL Handling**:
+    *   If the note is a standard Web URL, the app provides a clickable link to open it in the default system web browser.
+    *   If the note is a Google Drive or Google Docs/Sheets link, clicking the link opens it directly in the respective Google Drive/Docs/Sheets app (or defaults to the web browser if the app is not installed).
+
+### 3.6 Opened Reminder Screen
+View and modify reminders.
+*   **Editor**: Modify the description, date, and time.
+*   **Notification Engine**: When a reminder's scheduled date and time is reached, a local push notification triggers on the user's Android device.
+
+4. Offline Capability & Synchronization
+----------------------------------------
+*   **Offline-First Cache**: All trip details, itinerary events, notes, and reminders are stored in a local on-device database, allowing full viewing and interactively checking off list items without an internet connection.
+*   **Offline Edits**: If a Co-owner edits details, adds events, or creates notes/reminders offline, these edits are saved locally and marked for synchronization.
+*   **Sync Engine**: The application listens for network connectivity. When connection is restored, pending local edits are synced to the cloud, and any updates from the cloud (made by other Co-owners) are downloaded.

@@ -1,0 +1,234 @@
+TripPlanner Implementation Plan
+===============================
+
+This document outlines the step-by-step implementation plan for the TripPlanner Android application. The plan is divided into 9 logical blocks. Each block builds on the previous ones and ends with a concrete verification step. Each step is designed to be self-contained and descriptive enough to allow development to pause and resume seamlessly.
+
+Refer to the following files for specification details:
+- Project Description: description_detail.txt
+- Tech Stack Specs: techstack.txt
+- Database & Sync Design: datastructure.txt
+
+---
+
+Block 1: Build Environment & Application Base Setup
+===================================================
+Goal: Configure and verify the basic Android compilation environment, Hilt dependency injection, and core navigation structure.
+
+Step 1.1: Project Setup and Package Alignment
+- Rename `rootProject.name` in `settings.gradle.kts` to `"TripPlanner"` (currently `"GameScore"`).
+- Create the core Application class `com.pgoorts.tripplanner.TripPlannerApplication` annotated with `@HiltAndroidApp` in `App/app/src/main/java/com/pgoorts/tripplanner/`.
+- Update `AndroidManifest.xml` to specify `android:name=".TripPlannerApplication"`.
+- Ensure all basic Hilt annotations and build settings are properly applied.
+
+Step 1.2: Base Activity and Navigation Graph Setup
+- Create `MainActivity.kt` inside `com.pgoorts.tripplanner`. Extend `ComponentActivity` and annotate with `@AndroidEntryPoint`.
+- Setup a Compose navigation host using `androidx.navigation.compose.NavHost` to handle screen routing.
+- Define a sealed class or enum representing the app's navigation routes (e.g., `Home`, `OpenedTrip`, `OpenedEvent`, `OpenedNote`, `OpenedReminder`, `Profile`).
+- Set up a placeholder for the Home Screen that displays a simple text message.
+
+Step 1.3: Block Verification
+- Verify that the app compiles successfully without errors using `.\gradlew.bat assembleDebug`.
+- Install the app on an Android emulator or device, launch it, and confirm it starts up with Hilt injection initialized and renders the placeholder Home Screen without crashing.
+
+---
+
+Block 2: Database Schema & Local Persistence (Room DB)
+======================================================
+Goal: Set up the offline-first local database using Android Room to store all core domain entities.
+
+Step 2.1: Implement Room Entities and Type Converters
+- Create entity classes in `com.pgoorts.tripplanner.data.local.entity`:
+  * `TripEntity` (fields: id, destination, startDate, endDate, collaborators JSON string, createdAt, updatedAt, syncState, lastSyncedAt)
+  * `EventEntity` (fields: id, tripId, title, category, location, timezone, startDate, startTime, endDate, endTime, description, createdAt, updatedAt, syncState, lastSyncedAt)
+  * `NoteEntity` (fields: id, tripId, eventId, title, type, content JSON string, createdAt, updatedAt, syncState, lastSyncedAt)
+  * `ReminderEntity` (fields: id, tripId, eventId, text, date, time, isTriggeredLocal, createdAt, updatedAt, syncState, lastSyncedAt)
+  * `PackingTemplateEntity` (fields: id, ownerEmail, title, items JSON string, createdAt, updatedAt, syncState, lastSyncedAt)
+- Implement `Converters.kt` to serialize/deserialize complex types (e.g. lists of strings, map lists) to JSON strings using Kotlinx Serialization.
+
+Step 2.2: Implement DAOs (Data Access Objects)
+- Create interface `TripDao` with CRUD operations (queries to select all trips, insert/update trips, delete trips).
+- Create `EventDao` with queries to select events by `tripId` (sorted chronologically).
+- Create `NoteDao` with queries to fetch notes for a trip or event.
+- Create `ReminderDao` with queries to fetch reminders.
+- Create `PackingTemplateDao` with queries to fetch templates.
+
+Step 2.3: Implement AppDatabase and Hilt Module
+- Create `AppDatabase.kt` extending `RoomDatabase` declaring all entities and DAOs.
+- Create a Hilt module `DatabaseModule.kt` in `com.pgoorts.tripplanner.di` to provide singleton instances of `AppDatabase` and individual DAOs using `@Provides`.
+
+Step 2.4: Block Verification
+- Write Android local instrumented tests in `App/app/src/androidTest/java/com/pgoorts/tripplanner/data/local/` that instantiate the Room database in-memory.
+- Verify basic insert, update, query, and cascade delete operations for trips, events, notes, reminders, and templates. Confirm they run and pass.
+
+---
+
+Block 3: UI Foundation, Navigation, and Home Screen
+===================================================
+Goal: Establish the theme and construct the main Home Screen with the trip list and navigation flow.
+
+Step 3.1: Modern UI Theme & Design System
+- Define a custom color palette in `com.pgoorts.tripplanner.ui.theme.Theme` using HSL-derived colors to support dark and light modes. Use vibrant, premium accent colors.
+- Setup custom typography utilizing a modern font family (e.g., Inter or Outfit via Google Fonts or system defaults).
+- Implement standard reusable UI components: custom buttons, input text fields, and premium cards with subtle shadow and border gradients.
+
+Step 3.2: Implement Local Repository Layer
+- Create `TripRepository` in `com.pgoorts.tripplanner.data.repository`.
+- The repository exposes Flow streams of data directly from Room DAOs (single source of truth).
+- Expose methods to insert, update, and soft-delete (setting `syncState` to `PENDING_DELETE` or deleting directly if local-only).
+
+Step 3.3: Implement Home Screen UI and VM
+- Create `HomeViewModel` injecting `TripRepository`. Expose current active, upcoming, and past trips as a UI state.
+- Implement `HomeScreen.kt` containing:
+  * Tabbed/sectioned view for "Current", "Upcoming", and "Past" Trips.
+  * Card design showing Destination, Start/End Dates, and a placeholder for cover photo.
+  * FAB to show an "Add Trip" dialog where users enter destination, start date, and end date.
+  * Clicking a card triggers navigation to the Opened Trip Screen with the `tripId`.
+
+Step 3.4: Block Verification
+- Launch the application on a device.
+- Verify the home screen lists active tabs.
+- Open the "Add Trip" dialog, enter trip details, and confirm the new trip is saved to the local Room database and appears under the correct section (Past/Current/Upcoming) based on dates.
+
+---
+
+Block 4: Opened Trip Screen (Timeline, Notes, Reminders)
+========================================================
+Goal: Construct the core Opened Trip Screen dashboard containing the chronological itinerary timeline, notes, and reminders.
+
+Step 4.1: Opened Trip Container and Tab Layout
+- Create `OpenedTripViewModel` to manage state for a specific trip, loading its details, events, notes, and reminders.
+- Create `OpenedTripScreen.kt` featuring a navigation header (trip title, date ranges, export/share buttons) and 3 tabs: "Itinerary", "Notes", and "Reminders".
+
+Step 4.2: Chronological Itinerary View
+- Implement the "Itinerary" tab:
+  * Group events by date from Trip Start Date to Trip End Date.
+  * Sort events on a specific date: All-day/no-time events first, then timed events sorted by start time.
+  * Render multi-day events on *each* date they span, showing the status text (e.g., "Day 2 of 5").
+  * Display a category icon and distinct color scheme matching each event category (Lodging, Flight, Activity, etc.).
+
+Step 4.3: Notes and Reminders Lists within Opened Trip
+- Implement the "Notes" tab: Displays a scrollable list of notes associated directly with the Trip. Add FAB to trigger a "New Note" dialog (selecting Note Type: Text, Checklist, or URL).
+- Implement the "Reminders" tab: Displays a chronological list of reminders associated directly with the Trip. Add FAB to trigger a "New Reminder" dialog.
+
+Step 4.4: Block Verification
+- Navigate to an opened trip. Add several events: an all-day event, a timed event, and a multi-day event spanning multiple days.
+- Verify the events are rendered in chronological order, date-grouped, and multi-day events are correctly displayed on each corresponding day with day counts.
+- Add notes and reminders and verify they appear in their respective tabs.
+
+---
+
+Block 5: Detail Screens (Event, Note, and Reminder Editing)
+===========================================================
+Goal: Develop editing screens for events, notes, and reminders, supporting interactive features like checklists and map links.
+
+Step 5.1: Opened Event Screen
+- Create `OpenedEventScreen.kt` and `OpenedEventViewModel`.
+- Allow editing details: Title, Category (Dropdown), Location, Timezone (Dropdown/Picker), Dates, Times, and Description.
+- Add a Map Quick-Link icon that fires a system Geo URI Intent (`geo:0,0?q=Address`) if a location is entered.
+- Display event-specific lists of Notes and Reminders with buttons to add new ones.
+
+Step 5.2: Opened Note Screen & Checklist Interaction
+- Create `OpenedNoteScreen.kt` and `OpenedNoteViewModel`.
+- Implement a dual-mode editor:
+  * For `TEXT_BLOCK`: Freeform text field.
+  * For `CHECKLIST`: An interactive checklist where checking/unchecking items updates the database reactively. Add options to insert template items.
+  * For Web/Google Drive URLs: Visual clickable cards that trigger `Intent.ACTION_VIEW` web intents.
+- Implement "Construct from Templates" dialog: Fetch global packing templates and merge selected templates' items into the current checklist note.
+
+Step 5.3: Opened Reminder Screen
+- Create `OpenedReminderScreen.kt` and `OpenedReminderViewModel`.
+- Provide an editor to set description, date, and time.
+
+Step 5.4: Block Verification
+- Test Event Screen: Edit an event's details, save, and confirm changes are persisted. Tap the location icon and verify it launches Google Maps or an external mapping app.
+- Test Note Screen: Create a checklist note, check and uncheck items, and verify status is retained on screen reload. Test merging a checklist template. Click a URL note and verify the external browser opens.
+- Test Reminder Screen: Edit a reminder and verify database updates.
+
+---
+
+Block 6: AlarmManager for Local Push Notifications
+==================================================
+Goal: Schedule and trigger local device push notifications for reminders when their scheduled time is reached.
+
+Step 6.1: BroadcastReceiver & Notification Channel Creation
+- Create a `ReminderReceiver` class extending `BroadcastReceiver`.
+- When triggered, it builds and displays a system push notification showing the reminder description.
+- Initialize a Notification Channel in `TripPlannerApplication` for Android O+ compatibility.
+
+Step 6.2: Reminder Scheduler
+- Create `ReminderScheduler` class wrapping `AlarmManager`.
+- Expose methods to schedule a precise alarm for a reminder and cancel an existing alarm.
+- Request `POST_NOTIFICATIONS` permission on Android 13+.
+- Implement a `BootReceiver` that listens for `ACTION_BOOT_COMPLETED` and automatically reschedules all active future reminders.
+
+Step 6.3: Block Verification
+- Create a reminder scheduled 1 minute in the future.
+- Verify that a system notification appears at the exact scheduled time with the correct title and description, even when the app is in the background or closed.
+
+---
+
+Block 7: Cloud Backend Integration & Google Sign-In
+===================================================
+Goal: Set up Firebase Auth, the Google Sign-in flow, and User Profile / Template management.
+
+Step 7.1: Firebase Authentication Setup
+- Add Google Play services and Firebase initialization to the app.
+- Implement Google Sign-In using the Android Credential Manager API.
+
+Step 7.2: Profile Screen and Favorite Contacts
+- Create `ProfileScreen.kt` and `ProfileViewModel`.
+- Display logged-in user info (name, email, profile picture via Coil).
+- Allow users to manage their "Favorite Contacts" (Inner Circle list of email addresses, cached locally in Jetpack DataStore and synchronized to Firestore).
+
+Step 7.3: Packing List Template Manager
+- Implement a management UI on the Profile Screen to view, create, edit, and delete Packing List Templates.
+- Store templates in Room DB (`packing_templates` table) for offline access.
+
+Step 7.4: Block Verification
+- Verify that the user can sign in with their Google account, view their profile, edit their list of Favorite Contacts, and add global Packing List Templates.
+
+---
+
+Block 8: Bidirectional Sync Engine & Firebase Security Rules
+===========================================================
+Goal: Integrate WorkManager to perform bidirectional database synchronization between Room and Firestore, enforcing security roles.
+
+Step 8.1: WorkManager Synchronizer
+- Set up a unique periodic `SyncWorker` using Android WorkManager.
+- Implement the Upload Flow: Scan Room DB for records with `syncState != 'SYNCED'`. Push changes (inserts, updates, deletes) to Firestore under `/trips/{tripId}` sub-collections.
+- Implement the Download Flow: Query Firestore for trips where the user's email is listed in `collaborators`. Download updates and apply them to Room DB.
+
+Step 8.2: Conflict Resolution Logic
+- Integrate Last-Write-Wins logic based on comparing `updatedAt` timestamps between Room and Firestore versions of records.
+
+Step 8.3: Firestore Security Rules Configuration
+- Deploy Firestore Rules mapping permissions for `/trips/{tripId}`:
+  * Users can read/write data only if their email is in the `collaborators` mapping.
+  * Only collaborators with the `'CO_OWNER'` role can perform updates/deletes or write sub-collections. Collaborators with `'VIEWER'` have read-only access.
+
+Step 8.4: Block Verification
+- Run two separate emulator instances signed in as different collaborators with `CO_OWNER` permissions on a shared trip.
+- Make edits on emulator A, trigger synchronization, and confirm that the updates appear on emulator B.
+- Turn off internet access on emulator A, edit details, restore internet, and verify the changes successfully sync up to Firestore.
+
+---
+
+Block 9: Sharing, Collaboration, and Exporting
+===============================================
+Goal: Complete the trip sharing features, role enforcement in the UI, and plain-text trip exporting.
+
+Step 9.1: Share Trip UI
+- Implement a "Share Trip" dialog on the Opened Trip Screen.
+- Allow entering an email address or selecting one from Favorite Contacts (Inner Circle list). Set role selection (Co-owner or Viewer).
+
+Step 9.2: Viewer Mode UI Constraints
+- Read user role for the current trip in `OpenedTripScreen`, `OpenedEventScreen`, `OpenedNoteScreen`, etc.
+- If the role is `VIEWER`, disable editing on all input fields, and hide or disable all Add/Edit FABs and Dialog triggers.
+
+Step 9.3: Trip Exporting
+- Implement trip export logic: Construct a formatted text block containing all details of the trip, including all events, notes, and reminders.
+- Use `Intent.ACTION_SEND` to share this text block via the Android system share sheet.
+
+Step 9.4: Block Verification
+- Share a trip with User B as a Viewer. Sign in as User B on a device and verify that all edit/add UI controls are disabled, and no updates can be made.
+- Click the "Export" button on a trip and verify that the Android native sharing dialog opens with the complete, readable text of the trip itinerary.

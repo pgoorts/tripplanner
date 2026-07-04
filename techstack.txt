@@ -1,0 +1,115 @@
+TripPlanner Tech Stack Proposal
+==============================
+
+This document defines the libraries, frameworks, services, and architecture for the TripPlanner Android application. This proposal aligns with the project requirements (offline-first, cloud sync, sharing/collaboration, and Google Sign-in) and lists the exact versions specified in the project's build files.
+
+1. Build & Android System Configuration
+---------------------------------------
+*   **Android Gradle Plugin (AGP)**: `8.3.2`
+*   **Kotlin Compiler**: `1.9.22`
+*   **Java SDK**: Compatibility version `17` (JVM target `17`)
+*   **Android SDK Support**:
+    *   `compileSdk`: `34`
+    *   `targetSdk`: `34`
+    *   `minSdk`: `24`
+*   **Compose Compiler**: Kotlin Compiler Extension Version `1.5.8`
+
+2. Architecture & UI Stack
+--------------------------
+*   **UI Framework**: Jetpack Compose (using Material Design 3).
+*   **Architectural Pattern**: MVVM (Model-View-ViewModel) with Clean Architecture.
+*   **UI/Compose Libraries**:
+    *   `androidx.compose:compose-bom`: `2024.01.00`
+    *   `androidx.compose.ui:ui` (BOM controlled)
+    *   `androidx.compose.ui:ui-graphics` (BOM controlled)
+    *   `androidx.compose.ui:ui-tooling-preview` (BOM controlled)
+    *   `androidx.compose.material3:material3` (BOM controlled)
+    *   `androidx.compose.material:material-icons-extended`: `1.6.1`
+*   **Core / Jetpack Libraries**:
+    *   `androidx.core:core-ktx`: `1.12.0`
+    *   `com.google.android.material:material`: `1.13.0`
+    *   `androidx.lifecycle:lifecycle-runtime-ktx`: `2.7.0`
+    *   `androidx.activity:activity-compose`: `1.8.2`
+    *   `androidx.navigation:navigation-compose`: `2.7.7`
+    *   `androidx.lifecycle:lifecycle-viewmodel-compose`: `2.7.0`
+*   **Dependency Injection**:
+    *   `com.google.dagger:hilt-android` (and plugin): `2.51.1`
+    *   `com.google.dagger:hilt-compiler`: `2.51.1`
+    *   `androidx.hilt:hilt-navigation-compose`: `1.2.0`
+
+3. Local Persistence (Offline-First Cache)
+-------------------------------------------
+*   **Android Room Database**:
+    *   `androidx.room:room-runtime`: `2.6.1`
+    *   `androidx.room:room-ktx`: `2.6.1`
+    *   `androidx.room:room-compiler` (kapt): `2.6.1`
+    *   *Purpose*: Caches Trips, Events, Notes, Reminders, and Packing Templates locally. ViewModels query Room directly, enabling local responsiveness.
+*   **Jetpack DataStore (Preferences)** (To be added):
+    *   `androidx.datastore:datastore-preferences` (Suggested: `1.0.0`)
+    *   *Purpose*: Storing user profile configurations, favorite contacts (cached locally), and session info.
+
+4. Cloud Backend & Sync Engine (Proposed)
+-----------------------------------------
+*   **Firebase Authentication**:
+    *   *Purpose*: User identity management and Google Sign-in integration.
+*   **Cloud Firestore**:
+    *   *Purpose*: Real-time cloud database. Supports offline-to-online synchronization and document-level security rules to share trips with Co-owners or Viewers.
+*   **Android WorkManager**:
+    *   `androidx.work:work-runtime-ktx` (Suggested: `2.9.0`)
+    *   *Purpose*: Runs background jobs to reconcile Room cache and Firestore when internet connectivity changes.
+
+5. Authentication & Identity
+----------------------------
+*   **Android Credential Manager API**:
+    *   `androidx.credentials:credentials` (Suggested: `1.2.1`)
+    *   `androidx.credentials:credentials-play-services-auth` (Suggested: `1.2.1`)
+    *   *Purpose*: Handles standard Google Sign-In with credential selection.
+
+6. External Data Services (Proposed)
+------------------------------------
+*   **Google Places API** or **Mapbox Geocoding API**:
+    *   *Purpose*: Interactive autocomplete for destinations/event locations. Additionally, we will use the **Google Places Photos API** to fetch high-quality, relevant cover photos of the destination to display on the Home Screen cards.
+*   **Unsplash Image API** (Alternative Data Source):
+    *   *Purpose*: Fetching landscape cover photos. If Google Places photo is unavailable, the app will search Unsplash (using the destination name) to dynamically retrieve a beautiful placeholder image.
+*   **Firebase Cloud Storage** (Proposed for custom uploads):
+    *   *Purpose*: Allows users to upload custom trip cover photos from their camera or gallery, overriding the automatic API photos.
+*   **Local Asset Catalog** (Offline Fallback):
+    *   *Purpose*: Provides standard categorized travel illustration templates (e.g., 'beach', 'hiking', 'flight', 'city') to display offline before the sync engine retrieves a cloud/API image.
+*   **WeatherAPI.com** or **OpenWeatherMap API**:
+    *   *Purpose*: Fetching real-time forecast data for destinations.
+*   **ExchangeRate-API**:
+    *   *Purpose*: Conversion rate information.
+*   **Aviation Edge API**:
+    *   *Purpose*: Real-time flight tracking by flight code.
+
+7. Utilities & Libraries
+------------------------
+*   **Networking**: **Ktor Client** or **Retrofit** (for querying external REST endpoints).
+*   **Serialization**:
+    *   `org.jetbrains.kotlinx:kotlinx-serialization-json`: `1.6.2`
+    *   `org.jetbrains.kotlin.plugin.serialization` (plugin): `1.9.22`
+*   **Image Loading**:
+    *   `io.coil-kt:coil-compose` (Suggested: `2.6.0`)
+    *   *Purpose*: Asynchronous image loading for cover photos and user avatars.
+*   **Date/Time Handling**: Java Time APIs (desugared for backporting support if needed).
+
+8. System-Level Integrations & Notifications
+--------------------------------------------
+*   **AlarmManager & BroadcastReceiver**:
+    *   *Purpose*: Local Push Notifications for Reminders.
+    *   *Why*: Allows the app to schedule highly precise local alarms that trigger push notifications at the reminder time, even if the device is sleeping or the app is closed.
+*   **System Share Intent (Intent.ACTION_SEND)**:
+    *   *Purpose*: Exporting Trip itinerary text.
+    *   *Why*: Generates plain-text export logs of trips and opens the Android native sharing dialog.
+*   **Geo URI Intents (Intent.ACTION_VIEW)**:
+    *   *Purpose*: Map redirection.
+    *   *Why*: Standard `geo:0,0?q=Address` intents will open the location directly in external map apps.
+
+9. Compatibility Verification
+-----------------------------
+*   **Kotlin (1.9.22) & Compose Compiler (1.5.8)**: Fully compatible. According to official Jetpack Compose compatibility mapping, Compose compiler version 1.5.8 is specifically designed and certified for Kotlin 1.9.22.
+*   **Android Gradle Plugin (8.3.2) & Kotlin (1.9.22)**: Fully compatible. AGP 8.3.x provides full support for Kotlin 1.9.x development.
+*   **Dagger Hilt (2.51.1) & Room (2.6.1)**: Both libraries are fully compatible with Kotlin 1.9.22 and Java 17.
+*   **JVM Target (17) & Android SDK (34)**: Aligns with modern Android development standards, satisfying requirements for all listed libraries.
+
+
