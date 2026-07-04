@@ -10,23 +10,23 @@ Refer to the following files for specification details:
 
 ---
 
-Block 1: Build Environment & Application Base Setup
+Block 1: Build Environment & Application Base Setup [COMPLETED]
 ===================================================
 Goal: Configure and verify the basic Android compilation environment, Hilt dependency injection, and core navigation structure.
 
-Step 1.1: Project Setup and Package Alignment
+Step 1.1: Project Setup and Package Alignment [COMPLETED]
 - Rename `rootProject.name` in `settings.gradle.kts` to `"TripPlanner"` (currently `"GameScore"`).
 - Create the core Application class `com.pgoorts.tripplanner.TripPlannerApplication` annotated with `@HiltAndroidApp` in `App/app/src/main/java/com/pgoorts/tripplanner/`.
 - Update `AndroidManifest.xml` to specify `android:name=".TripPlannerApplication"`.
 - Ensure all basic Hilt annotations and build settings are properly applied.
 
-Step 1.2: Base Activity and Navigation Graph Setup
+Step 1.2: Base Activity and Navigation Graph Setup [COMPLETED]
 - Create `MainActivity.kt` inside `com.pgoorts.tripplanner`. Extend `ComponentActivity` and annotate with `@AndroidEntryPoint`.
 - Setup a Compose navigation host using `androidx.navigation.compose.NavHost` to handle screen routing.
 - Define a sealed class or enum representing the app's navigation routes (e.g., `Home`, `OpenedTrip`, `OpenedEvent`, `OpenedNote`, `OpenedReminder`, `Profile`).
 - Set up a placeholder for the Home Screen that displays a simple text message.
 
-Step 1.3: Block Verification
+Step 1.3: Block Verification [COMPLETED]
 - Verify that the app compiles successfully without errors using `.\gradlew.bat assembleDebug`.
 - Install the app on an Android emulator or device, launch it, and confirm it starts up with Hilt injection initialized and renders the placeholder Home Screen without crashing.
 
