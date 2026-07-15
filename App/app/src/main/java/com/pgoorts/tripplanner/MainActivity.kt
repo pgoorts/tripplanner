@@ -12,6 +12,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.pgoorts.tripplanner.ui.home.HomeScreen
 import com.pgoorts.tripplanner.ui.theme.TripPlannerTheme
+import com.pgoorts.tripplanner.ui.trip.OpenedTripScreen
 import dagger.hilt.android.AndroidEntryPoint
 
 sealed class Screen(val route: String) {
@@ -56,9 +57,21 @@ class MainActivity : ComponentActivity() {
                     composable(
                         route = Screen.OpenedTrip.route,
                         arguments = listOf(navArgument("tripId") { type = NavType.StringType })
-                    ) {
-                        // Placeholder — implemented in Block 4
-                        PlaceholderScreen("Opened Trip")
+                    ) { backStackEntry ->
+                        val tripId = backStackEntry.arguments?.getString("tripId") ?: return@composable
+                        OpenedTripScreen(
+                            tripId = tripId,
+                            onBack = { navController.popBackStack() },
+                            onEventClick = { eventId ->
+                                navController.navigate(Screen.OpenedEvent.createRoute(eventId))
+                            },
+                            onNoteClick = { noteId ->
+                                navController.navigate(Screen.OpenedNote.createRoute(noteId))
+                            },
+                            onReminderClick = { reminderId ->
+                                navController.navigate(Screen.OpenedReminder.createRoute(reminderId))
+                            }
+                        )
                     }
                     composable(
                         route = Screen.OpenedEvent.route,

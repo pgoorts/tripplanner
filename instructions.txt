@@ -4,7 +4,8 @@ We are going to build an app on Android to manage and plan trips we will take. T
 * Technology stack proposals. Propose what libraries and services we will use. This includes services to gather data. Document this in techstack.txt. Wait for confirmation before moving on.
 * Data structure design. Think about the database, what data goes where, and how the syncing will work. Document in datastructure.txt. Wait for confirmation before moving on.
 * Mockup images. Generate images of the app to show how it will look like (more or less, this doesn't need to be pixel perfect). This will help to design user flow and layout. Drop everything in the folder designmockups. Wait for confirmation before moving on
-* Generate an implementation plan, divided in blocks, and each block divided in steps. Block 1 is always setting up and verifying the build environment. Each block must end with a verification step (possibly by me). Each step should be independent from others, and eeverything should be detailed enough such that the implementation can be interrupted after any step and continued later on with only the design documents and code as context. Wait for confirmation before moving on. 
-* Bug fixing. You will receive a list of bugs. Go over them one by one. 
+* Generate an implementation plan, divided in blocks, and each block divided in steps. Block 1 is always setting up and verifying the build environment. Each block must end with a verification step (possibly by me). Each step should be independent from others, and everything should be detailed enough such that the implementation can be interrupted after any step and continued later on with only the design documents and code as context. Wait for confirmation before moving on. 
+* Do the implementation based on the plan. Do block by block, and stop after each block.
+* Bug fixing. You will receive a list of bugs. Go over them one by one. Stop after each finished bug. Mark the bugs that are completed.
 
 You will find the project description in description.txt
