@@ -13,6 +13,9 @@ import androidx.navigation.navArgument
 import com.pgoorts.tripplanner.ui.home.HomeScreen
 import com.pgoorts.tripplanner.ui.theme.TripPlannerTheme
 import com.pgoorts.tripplanner.ui.trip.OpenedTripScreen
+import com.pgoorts.tripplanner.ui.event.OpenedEventScreen
+import com.pgoorts.tripplanner.ui.note.OpenedNoteScreen
+import com.pgoorts.tripplanner.ui.reminder.OpenedReminderScreen
 import dagger.hilt.android.AndroidEntryPoint
 
 sealed class Screen(val route: String) {
@@ -76,20 +79,38 @@ class MainActivity : ComponentActivity() {
                     composable(
                         route = Screen.OpenedEvent.route,
                         arguments = listOf(navArgument("eventId") { type = NavType.StringType })
-                    ) {
-                        PlaceholderScreen("Opened Event")
+                    ) { backStackEntry ->
+                        val eventId = backStackEntry.arguments?.getString("eventId") ?: return@composable
+                        OpenedEventScreen(
+                            eventId = eventId,
+                            onBack = { navController.popBackStack() },
+                            onNoteClick = { noteId ->
+                                navController.navigate(Screen.OpenedNote.createRoute(noteId))
+                            },
+                            onReminderClick = { reminderId ->
+                                navController.navigate(Screen.OpenedReminder.createRoute(reminderId))
+                            }
+                        )
                     }
                     composable(
                         route = Screen.OpenedNote.route,
                         arguments = listOf(navArgument("noteId") { type = NavType.StringType })
-                    ) {
-                        PlaceholderScreen("Opened Note")
+                    ) { backStackEntry ->
+                        val noteId = backStackEntry.arguments?.getString("noteId") ?: return@composable
+                        OpenedNoteScreen(
+                            noteId = noteId,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable(
                         route = Screen.OpenedReminder.route,
                         arguments = listOf(navArgument("reminderId") { type = NavType.StringType })
-                    ) {
-                        PlaceholderScreen("Opened Reminder")
+                    ) { backStackEntry ->
+                        val reminderId = backStackEntry.arguments?.getString("reminderId") ?: return@composable
+                        OpenedReminderScreen(
+                            reminderId = reminderId,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable(Screen.Profile.route) {
                         PlaceholderScreen("Profile")

@@ -1,0 +1,50 @@
+TripPlanner Block 5 Verification Report
+========================================
+
+Goal: Develop editing screens for events, notes, and reminders, supporting interactive features like checklists and map links.
+
+Implementation Details:
+-----------------------
+1. Repository Created:
+   - PackingTemplateRepository.kt: CRUD operations and local persistence queries for Packing List Templates.
+
+2. Views & ViewModels Created:
+   - Event Editing:
+     * OpenedEventViewModel.kt: Exposes event details, associated notes, and associated reminders. Allows updating event fields.
+     * OpenedEventScreen.kt: Editing fields for title, category, location (with map quick link), timezone, dates, times, description. Displays and allows creation of event-specific notes and reminders.
+   - Note Editing:
+     * OpenedNoteViewModel.kt: Exposes note and list of checklist items (if NoteType is CHECKLIST). Handles text editing, checklist item toggle/add/remove, and merging packing template items.
+     * OpenedNoteScreen.kt:
+       - Text note view with automatic/reactive text-saving field.
+       - Checklist view with checkbox items, item removal/addition, and a dialog to merge packing templates.
+       - Web link / doc / drive note view with clickable preview cards launching external browser intents.
+   - Reminder Editing:
+     * OpenedReminderViewModel.kt: Exposes reminder details and allows updating text, date, and time.
+     * OpenedReminderScreen.kt: Form fields to edit reminder text, date, and time.
+
+3. Navigation Setup:
+   - MainActivity.kt was updated to map OpenedEvent, OpenedNote, and OpenedReminder routes to their real screens.
+
+Build Verification:
+-------------------
+- The project was compiled successfully using `.\gradlew.bat assembleDebug`.
+- Build Output: BUILD SUCCESSFUL (40 actionable tasks: 13 executed, 27 up-to-date).
+
+Manual Verification Steps (User Flow):
+--------------------------------------
+To manually verify the changes in the app:
+1. Run the app on an emulator/device.
+2. Open a trip and navigate to the Itinerary tab.
+3. Tap on an Event card to open the **Opened Event Screen**:
+   - Edit the Title, Category, and enter a Location (e.g. "Colosseum, Rome").
+   - Click the Map Quick-Link (map icon) next to Location. Verify it opens Google Maps or another maps app preloaded with the query "Colosseum, Rome".
+   - Click "Save" (disk icon) in the TopBar and reopen it. Verify changes are persisted.
+   - Add a note directly to this event. Add a reminder directly to this event.
+4. Tap on a Note card to open the **Opened Note Screen**:
+   - For a text note: Edit the text content. Go back and reopen; verify the text was saved.
+   - For a checklist note:
+     * Check/uncheck items. Go back and reopen; verify checked states are retained.
+     * Tap "Merge Template". If you have global templates created, select one to merge its items into the list.
+   - For a URL/Doc/Drive note: Enter a valid web link (e.g. "https://google.com"). Tap the "Open External Link" card and verify it opens Google in your mobile browser.
+5. Tap on a Reminder card to open the **Opened Reminder Screen**:
+   - Modify the reminder text, date, and time. Click "Save" and verify the updated info is rendered on the parent dashboard.
