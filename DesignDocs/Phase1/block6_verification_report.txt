@@ -1,0 +1,37 @@
+TripPlanner Block 6 Verification Report
+========================================
+
+Goal: Schedule and trigger local device push notifications for reminders when their scheduled time is reached.
+
+Implementation Details:
+-----------------------
+1. Alarm Scheduling and Receivers:
+   - ReminderScheduler.kt: Wraps AlarmManager to handle precise scheduling and cancellation of alarms using unique request codes derived from reminder IDs, with safe checks/fallbacks for Android 12+ (API 31+) exact alarm permissions.
+   - ReminderReceiver.kt: Receives the scheduled alarm broadcast, runs a coroutine on Dispatchers.IO to check if the reminder is still active in Room, updates `isTriggeredLocal` to true in the database, and displays a high-priority system notification.
+   - BootReceiver.kt: Receives `ACTION_BOOT_COMPLETED` (and other vendor reboot actions like quickboot) to automatically reschedule all active pending reminders on device startup.
+
+2. Application and Repository Wiring:
+   - TripPlannerApplication.kt: Updated to initialize a high-importance Notification Channel (`"reminder_channel"`) in onCreate for Android O+ compatibility.
+   - ReminderRepository.kt: Modified to automatically call `ReminderScheduler.schedule` on create/update and `ReminderScheduler.cancel` on delete.
+
+3. Permission and Manifest Settings:
+   - MainActivity.kt: Dynamically requests the `POST_NOTIFICATIONS` runtime permission on Android 13+ (API 33+).
+   - AndroidManifest.xml: Declares permissions (`POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, and `SCHEDULE_EXACT_ALARM`) and registers the `ReminderReceiver` and `BootReceiver` components. Note that `BootReceiver` is marked `android:exported="true"` to ensure the Android system can deliver the system-broadcasted boot completed intent.
+
+Build Verification:
+-------------------
+- The project was compiled successfully using `.\gradlew.bat compileDebugSources --no-daemon`.
+- Build Output: BUILD SUCCESSFUL (19 actionable tasks: 7 executed, 12 up-to-date) in 2m 9s.
+
+Manual Verification Steps:
+--------------------------
+To manually verify local push notifications:
+1. Launch the app on an Android emulator or device (ideally Android 13+).
+2. Accept the Notification Permission popup when the app launches.
+3. Open a trip and select the "Reminders" tab.
+4. Add a new reminder scheduled for exactly 1 minute in the future.
+5. Send the app to the background or close it entirely.
+6. Verify that a system push notification appears at the exact scheduled time displaying the reminder's description.
+7. Tap the notification and verify that it launches the TripPlanner application.
+8. Edit a reminder's time/date and confirm it reschedules correctly; delete a reminder and verify the alarm is cancelled.
+9. To verify boot rescheduling: run `adb shell am broadcast -a android.intent.action.BOOT_COMPLETED` or restart the emulator and verify that pending future reminders are scheduled.

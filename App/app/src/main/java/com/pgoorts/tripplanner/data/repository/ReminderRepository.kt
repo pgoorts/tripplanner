@@ -3,6 +3,7 @@ package com.pgoorts.tripplanner.data.repository
 import com.pgoorts.tripplanner.data.local.dao.ReminderDao
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.SyncState
+import com.pgoorts.tripplanner.reminder.ReminderScheduler
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -10,7 +11,8 @@ import javax.inject.Singleton
 
 @Singleton
 class ReminderRepository @Inject constructor(
-    private val reminderDao: ReminderDao
+    private val reminderDao: ReminderDao,
+    private val reminderScheduler: ReminderScheduler
 ) {
     fun getRemindersByTripId(tripId: String): Flow<List<ReminderEntity>> =
         reminderDao.getRemindersByTripId(tripId)
@@ -42,19 +44,21 @@ class ReminderRepository @Inject constructor(
             syncState = SyncState.PENDING_INSERT
         )
         reminderDao.insertReminder(reminder)
+        reminderScheduler.schedule(reminder)
         return reminder
     }
 
     suspend fun updateReminder(reminder: ReminderEntity) {
-        reminderDao.updateReminder(
-            reminder.copy(
-                updatedAt = System.currentTimeMillis(),
-                syncState = SyncState.PENDING_UPDATE
-            )
+        val updatedReminder = reminder.copy(
+            updatedAt = System.currentTimeMillis(),
+            syncState = SyncState.PENDING_UPDATE
         )
+        reminderDao.updateReminder(updatedReminder)
+        reminderScheduler.schedule(updatedReminder)
     }
 
     suspend fun deleteReminder(reminder: ReminderEntity) {
+        reminderScheduler.cancel(reminder)
         reminderDao.deleteReminderById(reminder.id)
     }
 }
