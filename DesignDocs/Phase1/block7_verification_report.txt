@@ -1,0 +1,41 @@
+TripPlanner Block 7 Verification Report
+========================================
+
+Goal: Set up Firebase Auth, the Google Sign-in flow, and User Profile / Template management.
+
+Implementation Details:
+-----------------------
+1. Firebase and Google Sign-in Authentication:
+   - UserSessionManager.kt: Wraps FirebaseAuth and Jetpack DataStore to expose current logged-in user information (email, displayName, photoUrl) and manage inner-circle contacts persistence.
+   - GoogleAuthClient.kt: Uses the Android Credential Manager API to launch Google Sign-In, maps the Google ID Token to Firebase Credentials, and authenticates into Firebase Auth. Also handles clearing credentials on sign-out.
+   - AuthModule.kt: Provides singleton instances of `UserSessionManager` and `GoogleAuthClient` via Hilt.
+   - SignInScreen.kt: A landing screen UI featuring a styled call to action and a "Sign in with Google" button.
+
+2. User Profile and Settings Screen:
+   - ProfileScreen.kt: Displays the active user's details (retrieving avatars via Coil).
+   - Favorite Contacts (Inner Circle): Allows adding, displaying, and removing contact email addresses. The list is stored persistently in Jetpack DataStore under preferences.
+   - Packing List Template Manager: Full CRUD interface within the profile screen enabling users to create, update, and delete packing templates, which are saved in the Room database's `packing_templates` table.
+   - ProfileViewModel.kt: Manages stateflows and data operations for the ProfileScreen.
+
+3. Project Infrastructure:
+   - Root and app build files updated with Google Services and Firebase SDK BOM plugins and dependencies (Firebase Auth, Firestore, Jetpack DataStore, Android Credentials API).
+   - AndroidManifest.xml: Added `INTERNET` permission.
+   - MainActivity.kt: Integrated dynamic auth checking to automatically redirect users to the Sign-In screen if not authenticated, and wired the real `ProfileScreen` route.
+   - strings.xml: Added `default_web_client_id` for Firebase Web Client ID integration.
+
+Build Verification:
+-------------------
+- The project compiled successfully using `.\gradlew.bat compileDebugSources --no-daemon`.
+- Build Output: BUILD SUCCESSFUL (20 actionable tasks: 5 executed, 15 up-to-date) in 2m 54s.
+
+Manual Verification Steps:
+--------------------------
+1. Launch the app on an Android device or emulator.
+2. Verify that the app opens directly to the **Sign-In Screen** (since no user is logged in yet).
+3. Click "Sign in with Google", select your Google account from the Credential Manager picker, and verify that you are successfully redirected to the Home Screen.
+4. On the Home Screen, click the Profile icon in the top header.
+5. In the **Profile Screen**, verify that your Google account name, email, and profile image are displayed.
+6. Under "Favorite Contacts", tap the "+" button, enter an email, and click "Add". Verify it appears in the list. Restart the app and verify the list is retained.
+7. Under "Packing List Templates", tap the "+" button, enter a template title (e.g. "Plane Essentials") and list some items (e.g. "Earplugs", "Neck pillow", "Eye mask" - one per line), then tap "Save".
+8. Edit the template to add or remove items, and delete it to verify full local DB operations.
+9. Click the Logout icon in the Profile top bar, and verify that the app signs you out and returns to the Sign-In Screen.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TripPlanner</string>
+    <!--
+        Replace this value with your OAuth 2.0 Web Client ID from the Firebase console:
+        Firebase Console → Project Settings → General → Your apps → Web API Key
+        OR
+        Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs → Web client
+    -->
+    <string name="default_web_client_id">1057507649092-iv7mv9mj9sof5n74i1qatosnka9b93eb.apps.googleusercontent.com</string>
+</resources>

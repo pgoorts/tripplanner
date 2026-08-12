@@ -1,0 +1,406 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.pgoorts.tripplanner.ui.profile
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import com.pgoorts.tripplanner.auth.GoogleAuthClient
+import com.pgoorts.tripplanner.data.local.entity.PackingTemplateEntity
+import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.coroutines.launch
+
+@Composable
+fun ProfileScreen(
+    googleAuthClient: GoogleAuthClient,
+    onBack: () -> Unit,
+    onSignOut: () -> Unit,
+    viewModel: ProfileViewModel = hiltViewModel()
+) {
+    val scope = rememberCoroutineScope()
+    val innerCircle by viewModel.innerCircle.collectAsState()
+    val templates by viewModel.templates.collectAsState()
+
+    var showAddContactDialog by remember { mutableStateOf(false) }
+    var showAddTemplateDialog by remember { mutableStateOf(false) }
+    var editingTemplate by remember { mutableStateOf<PackingTemplateEntity?>(null) }
+
+    Scaffold(
+        containerColor = Navy900,
+        topBar = {
+            TopAppBar(
+                title = { Text("Profile", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        scope.launch {
+                            googleAuthClient.signOut()
+                            onSignOut()
+                        }
+                    }) {
+                        Icon(Icons.Filled.Logout, contentDescription = "Sign Out", tint = ErrorRed)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Navy900,
+                    titleContentColor = White,
+                    navigationIconContentColor = Grey300
+                )
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            // --- User Info Card ---
+            item {
+                Spacer(Modifier.height(12.dp))
+                UserInfoCard(viewModel)
+                Spacer(Modifier.height(20.dp))
+            }
+
+            // --- Inner Circle Section ---
+            item {
+                SectionHeader(title = "Favorite Contacts (Inner Circle)", onAdd = { showAddContactDialog = true })
+                Spacer(Modifier.height(8.dp))
+            }
+            if (innerCircle.isEmpty()) {
+                item {
+                    EmptyHint("No favorite contacts yet. Add email addresses for quick trip sharing.")
+                    Spacer(Modifier.height(12.dp))
+                }
+            } else {
+                items(innerCircle, key = { it }) { email ->
+                    ContactRow(email = email, onDelete = {
+                        val updated = innerCircle.toMutableList().also { it.remove(email) }
+                        viewModel.saveInnerCircle(updated)
+                    })
+                }
+                item { Spacer(Modifier.height(12.dp)) }
+            }
+
+            // --- Packing Templates Section ---
+            item {
+                SectionHeader(title = "Packing List Templates", onAdd = { showAddTemplateDialog = true })
+                Spacer(Modifier.height(8.dp))
+            }
+            if (templates.isEmpty()) {
+                item {
+                    EmptyHint("No packing templates yet. Create reusable checklists like \"Plane Items\" or \"Medication\".")
+                    Spacer(Modifier.height(12.dp))
+                }
+            } else {
+                items(templates, key = { it.id }) { template ->
+                    TemplateRow(
+                        template = template,
+                        items = viewModel.decodeItems(template.items),
+                        onEdit = { editingTemplate = template },
+                        onDelete = { viewModel.deleteTemplate(template) }
+                    )
+                }
+                item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+    }
+
+    // --- Add Contact Dialog ---
+    if (showAddContactDialog) {
+        AddContactDialog(
+            onDismiss = { showAddContactDialog = false },
+            onAdd = { email ->
+                if (email.isNotBlank() && !innerCircle.contains(email.trim())) {
+                    viewModel.saveInnerCircle(innerCircle + email.trim())
+                }
+                showAddContactDialog = false
+            }
+        )
+    }
+
+    // --- Add Template Dialog ---
+    if (showAddTemplateDialog) {
+        AddEditTemplateDialog(
+            initialTitle = "",
+            initialItems = emptyList(),
+            onDismiss = { showAddTemplateDialog = false },
+            onSave = { title, items ->
+                viewModel.createTemplate(title, items)
+                showAddTemplateDialog = false
+            }
+        )
+    }
+
+    // --- Edit Template Dialog ---
+    editingTemplate?.let { tmpl ->
+        AddEditTemplateDialog(
+            initialTitle = tmpl.title,
+            initialItems = viewModel.decodeItems(tmpl.items),
+            onDismiss = { editingTemplate = null },
+            onSave = { title, items ->
+                viewModel.updateTemplate(tmpl, title, items)
+                editingTemplate = null
+            }
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sub-composables
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun UserInfoCard(viewModel: ProfileViewModel) {
+    val name = viewModel.userSessionManager.userDisplayName ?: "Unknown User"
+    val email = viewModel.userSessionManager.userEmail ?: ""
+    val photoUrl = viewModel.userSessionManager.userPhotoUrl
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Navy700)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (photoUrl != null) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = "Profile photo",
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Navy600)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Teal300),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = name.firstOrNull()?.uppercase() ?: "?",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            color = White, fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+            Column {
+                Text(name, style = MaterialTheme.typography.titleMedium.copy(color = White, fontWeight = FontWeight.Bold))
+                Text(email, style = MaterialTheme.typography.bodySmall.copy(color = Grey300))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, onAdd: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall.copy(color = Teal300, fontWeight = FontWeight.Bold)
+        )
+        IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Filled.Add, contentDescription = "Add", tint = Teal300, modifier = Modifier.size(20.dp))
+        }
+    }
+    Divider(color = Navy700, thickness = 1.dp)
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall.copy(color = Grey500),
+        modifier = Modifier.padding(vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun ContactRow(email: String, onDelete: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Filled.Person, contentDescription = null, tint = Grey500, modifier = Modifier.size(18.dp))
+            Text(email, style = MaterialTheme.typography.bodyMedium.copy(color = Grey100))
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = "Remove", tint = ErrorRed, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun TemplateRow(
+    template: PackingTemplateEntity,
+    items: List<String>,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = Navy700)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(template.title, style = MaterialTheme.typography.bodyMedium.copy(color = White, fontWeight = FontWeight.SemiBold))
+                Text(
+                    "${items.size} item${if (items.size != 1) "s" else ""}: ${items.take(3).joinToString(", ")}${if (items.size > 3) "…" else ""}",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Grey500)
+                )
+            }
+            Row {
+                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = Teal300, modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddContactDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var email by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Navy800,
+        title = { Text("Add Favorite Contact", color = White) },
+        text = {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email address", color = Grey500) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Grey100,
+                    unfocusedTextColor = Grey100,
+                    focusedBorderColor = Teal300,
+                    unfocusedBorderColor = Grey700,
+                    focusedLabelColor = Teal300,
+                    cursorColor = Teal300
+                )
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(email) }) {
+                Text("Add", color = Teal300)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Grey500) }
+        }
+    )
+}
+
+@Composable
+private fun AddEditTemplateDialog(
+    initialTitle: String,
+    initialItems: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (String, List<String>) -> Unit
+) {
+    var title by remember { mutableStateOf(initialTitle) }
+    var itemsText by remember { mutableStateOf(initialItems.joinToString("\n")) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Navy800,
+        title = { Text(if (initialTitle.isEmpty()) "New Template" else "Edit Template", color = White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Template name", color = Grey500) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = dialogTextFieldColors()
+                )
+                OutlinedTextField(
+                    value = itemsText,
+                    onValueChange = { itemsText = it },
+                    label = { Text("Items (one per line)", color = Grey500) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp, max = 220.dp),
+                    maxLines = 10,
+                    colors = dialogTextFieldColors()
+                )
+                Text("Enter one item per line", style = MaterialTheme.typography.bodySmall.copy(color = Grey700))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val items = itemsText.lines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                onSave(title.trim(), items)
+            }) {
+                Text("Save", color = Teal300, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Grey500) }
+        }
+    )
+}
+
+@Composable
+private fun dialogTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Grey100,
+    unfocusedTextColor = Grey100,
+    focusedBorderColor = Teal300,
+    unfocusedBorderColor = Grey700,
+    focusedLabelColor = Teal300,
+    cursorColor = Teal300
+)
