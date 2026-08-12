@@ -7,11 +7,36 @@ import android.content.Context
 import android.os.Build
 import dagger.hilt.android.HiltAndroidApp
 
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.pgoorts.tripplanner.sync.SyncWorker
+import java.util.concurrent.TimeUnit
+
 @HiltAndroidApp
 class TripPlannerApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        scheduleSync()
+    }
+
+    private fun scheduleSync() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val syncWorkRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "TripPlannerSync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            syncWorkRequest
+        )
     }
 
     private fun createNotificationChannel() {

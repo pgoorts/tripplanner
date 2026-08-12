@@ -46,4 +46,7 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE syncState != 'SYNCED'")
     suspend fun getPendingSyncNotes(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE tripId = :tripId")
+    suspend fun getNotesByTripIdSync(tripId: String): List<NoteEntity>
 }

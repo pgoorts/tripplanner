@@ -55,6 +55,13 @@ class NoteRepository @Inject constructor(
     }
 
     suspend fun deleteNote(note: NoteEntity) {
-        noteDao.deleteNoteById(note.id)
+        if (note.syncState == SyncState.PENDING_INSERT) {
+            noteDao.deleteNoteById(note.id)
+        } else {
+            noteDao.insertNote(note.copy(
+                syncState = SyncState.PENDING_DELETE,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
     }
 }

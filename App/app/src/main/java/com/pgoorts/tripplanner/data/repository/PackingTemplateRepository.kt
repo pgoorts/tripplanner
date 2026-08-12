@@ -47,6 +47,13 @@ class PackingTemplateRepository @Inject constructor(
     }
 
     suspend fun deleteTemplate(template: PackingTemplateEntity) {
-        packingTemplateDao.deleteTemplateById(template.id)
+        if (template.syncState == SyncState.PENDING_INSERT) {
+            packingTemplateDao.deleteTemplateById(template.id)
+        } else {
+            packingTemplateDao.insertTemplate(template.copy(
+                syncState = SyncState.PENDING_DELETE,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
     }
 }

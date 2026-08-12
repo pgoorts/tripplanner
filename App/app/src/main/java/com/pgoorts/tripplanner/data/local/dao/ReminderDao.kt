@@ -53,4 +53,7 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE syncState != 'SYNCED'")
     suspend fun getPendingSyncReminders(): List<ReminderEntity>
+
+    @Query("SELECT * FROM reminders WHERE tripId = :tripId")
+    suspend fun getRemindersByTripIdSync(tripId: String): List<ReminderEntity>
 }

@@ -62,6 +62,13 @@ class EventRepository @Inject constructor(
     }
 
     suspend fun deleteEvent(event: EventEntity) {
-        eventDao.deleteEventById(event.id)
+        if (event.syncState == SyncState.PENDING_INSERT) {
+            eventDao.deleteEventById(event.id)
+        } else {
+            eventDao.insertEvent(event.copy(
+                syncState = SyncState.PENDING_DELETE,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
     }
 }

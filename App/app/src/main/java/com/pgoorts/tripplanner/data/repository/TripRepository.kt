@@ -54,7 +54,13 @@ class TripRepository @Inject constructor(
     }
 
     suspend fun deleteTrip(trip: TripEntity) {
-        // Soft delete: mark as PENDING_DELETE for sync engine, then remove locally
-        tripDao.deleteTripById(trip.id)
+        if (trip.syncState == SyncState.PENDING_INSERT) {
+            tripDao.deleteTripById(trip.id)
+        } else {
+            tripDao.insertTrip(trip.copy(
+                syncState = SyncState.PENDING_DELETE,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
     }
 }

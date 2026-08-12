@@ -1,0 +1,38 @@
+TripPlanner Block 8 Verification Report
+========================================
+
+Goal: Integrate WorkManager to perform bidirectional database synchronization between Room and Firestore, enforcing security roles.
+
+Implementation Details:
+-----------------------
+1. WorkManager Synchronizer (Upload & Download Flows):
+   - SyncWorker.kt: Implements a WorkManager `CoroutineWorker` that performs bidirectional sync.
+     * Upload Flow: Queries local DAOs for trips, events, notes, reminders, and packing templates with pending local modifications (inserts, updates, deletes) and synchronizes them to Firebase Firestore. Deleted items are permanently removed from Room after successful cloud removal.
+     * Download Flow: Fetches remote trips where the user's email is present in the `collaborators` mapping. Downloads remote trips, events, notes, reminders, and packing templates, applying them locally.
+     * Local Reconciliation: Removes local synced/updated items that were deleted on the remote Firestore server.
+2. Conflict Resolution Logic:
+   - SyncWorker.kt: Integrates Last-Write-Wins logic by comparing `updatedAt` timestamps between Room and Firestore versions of records.
+3. WorkManager Scheduling:
+   - TripPlannerApplication.kt: Registers and schedules a unique periodic `SyncWorker` with a 15-minute interval and network connectivity constraints on application startup.
+4. Firestore Security Rules:
+   - firestore.rules: Configured security rules ensuring:
+     * Access is restricted to signed-in users.
+     * Trip read/write operations require the user's email to be in the `collaborators` field.
+     * Write access (inserts, updates, deletes) to trips and sub-collections (events, notes, reminders) is restricted to collaborators with the `'CO_OWNER'` role. Collaborators with the `'VIEWER'` role have read-only access.
+     * Packing list templates are private to their owners.
+5. Local Repository Deletion Updates:
+   - Updated TripRepository, EventRepository, NoteRepository, ReminderRepository, and PackingTemplateRepository to soft-delete items by marking them as `PENDING_DELETE` (so they can be uploaded and deleted in Firestore) instead of hard-deleting immediately (unless they are new items that have not yet been synchronized).
+6. Local Query Additions:
+   - Added sync helper methods `getNotesByTripIdSync` and `getRemindersByTripIdSync` to NoteDao and ReminderDao to facilitate local deletion cleanups.
+
+Build Verification:
+-------------------
+- The project compiled successfully using `.\gradlew.bat compileDebugKotlin`.
+- Build Output: BUILD SUCCESSFUL in 1m 43s.
+
+Manual Verification Steps:
+--------------------------
+1. Launch two separate emulator instances signed in as different collaborators on a shared trip.
+2. Make edits to the trip on Emulator A, trigger sync, and confirm that updates appear on Emulator B after its sync completes.
+3. Turn off internet access on Emulator A, edit details (e.g. edit an event description), restore internet, and verify changes successfully sync up to Firestore.
+4. Attempt to write to a trip's sub-collection (e.g. add a note) using an account with 'VIEWER' role on Firestore and verify that Firestore security rules block the write request.

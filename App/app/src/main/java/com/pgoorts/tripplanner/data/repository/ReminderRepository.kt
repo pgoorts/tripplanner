@@ -59,6 +59,13 @@ class ReminderRepository @Inject constructor(
 
     suspend fun deleteReminder(reminder: ReminderEntity) {
         reminderScheduler.cancel(reminder)
-        reminderDao.deleteReminderById(reminder.id)
+        if (reminder.syncState == SyncState.PENDING_INSERT) {
+            reminderDao.deleteReminderById(reminder.id)
+        } else {
+            reminderDao.insertReminder(reminder.copy(
+                syncState = SyncState.PENDING_DELETE,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
     }
 }
