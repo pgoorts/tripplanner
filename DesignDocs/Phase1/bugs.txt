@@ -1,2 +1,2 @@
-- Creating a trip: entering the date is a text field with a specific format. Change it to a date picker. Check other places where dates need to be entered, and do the same
+- Creating a trip: entering the date is a text field with a specific format. Change it to a date picker. Check other places where dates need to be entered, and do the same [COMPLETED]
 - Entering a time anywhere should show a time picker, not entering manually

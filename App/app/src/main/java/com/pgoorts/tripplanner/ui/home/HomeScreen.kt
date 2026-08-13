@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -449,16 +450,10 @@ private fun AddTripDialog(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
+                DatePickerField(
+                    label = "Start Date",
                     value = startDate,
                     onValueChange = { startDate = it; errorMessage = null },
-                    label = { Text("Start Date", color = Grey500) },
-                    placeholder = { Text("YYYY-MM-DD", color = Grey700) },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Filled.DateRange, null, tint = Grey500, modifier = Modifier.size(18.dp))
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Grey100,
                         unfocusedTextColor = Grey100,
@@ -469,16 +464,10 @@ private fun AddTripDialog(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
+                DatePickerField(
+                    label = "End Date",
                     value = endDate,
                     onValueChange = { endDate = it; errorMessage = null },
-                    label = { Text("End Date", color = Grey500) },
-                    placeholder = { Text("YYYY-MM-DD", color = Grey700) },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Filled.DateRange, null, tint = Grey500, modifier = Modifier.size(18.dp))
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Grey100,
                         unfocusedTextColor = Grey100,

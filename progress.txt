@@ -1,3 +1,3 @@
 Phase: 1
-Step: implementation
-Current block: Block 9 completed (final block of implementation_plan.txt)
+Step: bugfixing
+Current: date-picker bug fixed (bugs.txt line 1); time-picker bug (bugs.txt line 2) next

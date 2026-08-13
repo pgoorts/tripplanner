@@ -33,6 +33,7 @@ import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -295,22 +296,18 @@ fun OpenedEventScreen(
 
                         // Dates
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            DatePickerField(
+                                label = "Start Date",
                                 value = startDate,
                                 onValueChange = { startDate = it },
-                                label = { Text("Start Date", color = Grey500) },
-                                placeholder = { Text("YYYY-MM-DD", color = Grey700) },
-                                singleLine = true,
                                 enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
-                            OutlinedTextField(
+                            DatePickerField(
+                                label = "End Date",
                                 value = endDate,
                                 onValueChange = { endDate = it },
-                                label = { Text("End Date", color = Grey500) },
-                                placeholder = { Text("YYYY-MM-DD", color = Grey700) },
-                                singleLine = true,
                                 enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
@@ -671,11 +668,10 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    DatePickerField(
+                        label = "Date",
                         value = date,
                         onValueChange = { date = it; error = null },
-                        label = { Text("Date", color = Grey500) },
-                        placeholder = { Text("YYYY-MM-DD", color = Grey700) },
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
