@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -113,12 +114,12 @@ fun OpenedReminderScreen(
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
+                    TimePickerField(
+                        label = "Time",
                         value = time,
                         onValueChange = { time = it },
-                        label = { Text("Time", color = Grey500) },
-                        placeholder = { Text("HH:MM", color = Grey700) },
                         enabled = canEdit,
+                        allowClear = false,
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )

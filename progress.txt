@@ -1,3 +1,3 @@
 Phase: 1
 Step: bugfixing
-Current: date-picker bug fixed (bugs.txt line 1); time-picker bug (bugs.txt line 2) next
+Current: both bugs in bugs.txt fixed (date picker + time picker); no items left in bug/extension backlog

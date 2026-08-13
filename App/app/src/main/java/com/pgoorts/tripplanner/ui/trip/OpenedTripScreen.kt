@@ -40,6 +40,7 @@ import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
@@ -752,8 +753,8 @@ private fun AddEventDialog(
                     DatePickerField(label = "End Date", value = endDate, onValueChange = { endDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TripTextField(value = startTime, onValueChange = { startTime = it; error = null }, label = "Start Time", hint = "HH:MM (opt)", modifier = Modifier.weight(1f))
-                    TripTextField(value = endTime, onValueChange = { endTime = it; error = null }, label = "End Time", hint = "HH:MM (opt)", modifier = Modifier.weight(1f))
+                    TimePickerField(label = "Start Time", value = startTime, onValueChange = { startTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    TimePickerField(label = "End Time", value = endTime, onValueChange = { endTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
 
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
@@ -859,7 +860,7 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
                 TripTextField(value = text, onValueChange = { text = it; error = null }, label = "Reminder text")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DatePickerField(label = "Date", value = date, onValueChange = { date = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
-                    TripTextField(value = time, onValueChange = { time = it; error = null }, label = "Time", hint = "HH:MM", modifier = Modifier.weight(1f))
+                    TimePickerField(label = "Time", value = time, onValueChange = { time = it; error = null }, allowClear = false, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
             }

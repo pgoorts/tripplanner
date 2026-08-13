@@ -34,6 +34,7 @@ import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -316,23 +317,21 @@ fun OpenedEventScreen(
 
                         // Times
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
+                            TimePickerField(
+                                label = "Start Time",
                                 value = startTime,
                                 onValueChange = { startTime = it },
-                                label = { Text("Start Time", color = Grey500) },
-                                placeholder = { Text("HH:MM (opt)", color = Grey700) },
-                                singleLine = true,
                                 enabled = canEdit,
+                                allowClear = true,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
-                            OutlinedTextField(
+                            TimePickerField(
+                                label = "End Time",
                                 value = endTime,
                                 onValueChange = { endTime = it },
-                                label = { Text("End Time", color = Grey500) },
-                                placeholder = { Text("HH:MM (opt)", color = Grey700) },
-                                singleLine = true,
                                 enabled = canEdit,
+                                allowClear = true,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -675,11 +674,11 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
+                    TimePickerField(
+                        label = "Time",
                         value = time,
                         onValueChange = { time = it; error = null },
-                        label = { Text("Time", color = Grey500) },
-                        placeholder = { Text("HH:MM", color = Grey700) },
+                        allowClear = false,
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
