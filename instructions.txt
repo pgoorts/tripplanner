@@ -11,3 +11,5 @@ We are going to build software. The execution will go in phases, where each phas
 You will find, and will write, all design documents in the DesignDocs folder, which contains subfolders per phase. Write all your current design docs in the current phase folder. Other phases can be used as reference, but can not be written to. You can find the project description in description.txt
 
 In the file in root called progress.txt, you can find the current phase and step. It it's not there, we did nothing yet. Keep this file updated with what you did
+
+Building the app is with ./gradlew assembleDebug in the App directory

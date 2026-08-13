@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -27,6 +28,8 @@ fun OpenedReminderScreen(
     viewModel: OpenedReminderViewModel = hiltViewModel()
 ) {
     val reminder by viewModel.reminderFlow.collectAsState()
+    val currentUserRole by viewModel.currentUserRole.collectAsState()
+    val canEdit = currentUserRole != TripRole.VIEWER
     val context = LocalContext.current
 
     var text by remember { mutableStateOf("") }
@@ -52,21 +55,23 @@ fun OpenedReminderScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val error = validateReminderForm(text, date, time)
-                        if (error != null) {
-                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                        } else {
-                            viewModel.updateReminder(
-                                text = text.trim(),
-                                date = date.trim(),
-                                time = time.trim()
-                            )
-                            Toast.makeText(context, "Saved changes", Toast.LENGTH_SHORT).show()
-                            onBack()
+                    if (canEdit) {
+                        IconButton(onClick = {
+                            val error = validateReminderForm(text, date, time)
+                            if (error != null) {
+                                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                            } else {
+                                viewModel.updateReminder(
+                                    text = text.trim(),
+                                    date = date.trim(),
+                                    time = time.trim()
+                                )
+                                Toast.makeText(context, "Saved changes", Toast.LENGTH_SHORT).show()
+                                onBack()
+                            }
+                        }) {
+                            Icon(Icons.Filled.Save, contentDescription = "Save", tint = Teal300)
                         }
-                    }) {
-                        Icon(Icons.Filled.Save, contentDescription = "Save", tint = Teal300)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -93,6 +98,7 @@ fun OpenedReminderScreen(
                     value = text,
                     onValueChange = { text = it },
                     label = { Text("Reminder Description", color = Grey500) },
+                    enabled = canEdit,
                     colors = tripTextFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -103,6 +109,7 @@ fun OpenedReminderScreen(
                         onValueChange = { date = it },
                         label = { Text("Date", color = Grey500) },
                         placeholder = { Text("YYYY-MM-DD", color = Grey700) },
+                        enabled = canEdit,
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )
@@ -111,6 +118,7 @@ fun OpenedReminderScreen(
                         onValueChange = { time = it },
                         label = { Text("Time", color = Grey500) },
                         placeholder = { Text("HH:MM", color = Grey700) },
+                        enabled = canEdit,
                         colors = tripTextFieldColors(),
                         modifier = Modifier.weight(1f)
                     )

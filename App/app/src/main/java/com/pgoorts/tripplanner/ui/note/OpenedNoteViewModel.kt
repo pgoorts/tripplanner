@@ -3,15 +3,23 @@ package com.pgoorts.tripplanner.ui.note
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.entity.ChecklistItem
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.PackingTemplateEntity
+import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.data.local.entity.roleFor
 import com.pgoorts.tripplanner.data.repository.NoteRepository
 import com.pgoorts.tripplanner.data.repository.PackingTemplateRepository
+import com.pgoorts.tripplanner.data.repository.TripRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -22,22 +30,38 @@ data class OpenedNoteUiState(
     val note: NoteEntity? = null,
     val checklistItems: List<ChecklistItem> = emptyList(),
     val templates: List<PackingTemplateEntity> = emptyList(),
+    val currentUserRole: TripRole? = null,
     val isLoading: Boolean = true
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class OpenedNoteViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val noteRepository: NoteRepository,
-    private val packingTemplateRepository: PackingTemplateRepository
+    private val packingTemplateRepository: PackingTemplateRepository,
+    private val tripRepository: TripRepository,
+    private val userSessionManager: UserSessionManager
 ) : ViewModel() {
 
     private val noteId: String = checkNotNull(savedStateHandle["noteId"])
 
+    private val noteFlow = noteRepository.getNoteById(noteId)
+
+    private val roleFlow = noteFlow.flatMapLatest { note ->
+        val tripId = note?.tripId
+        if (tripId == null) {
+            flowOf(null)
+        } else {
+            tripRepository.getTripById(tripId).map { it?.roleFor(userSessionManager.userEmail) }
+        }
+    }
+
     val uiState: StateFlow<OpenedNoteUiState> = combine(
-        noteRepository.getNoteById(noteId),
-        packingTemplateRepository.getTemplatesByOwner("") // Use blank email for local-only templates
-    ) { note, templates ->
+        noteFlow,
+        packingTemplateRepository.getTemplatesByOwner(""), // Use blank email for local-only templates
+        roleFlow
+    ) { note, templates, role ->
         val checklistItems = if (note?.type == com.pgoorts.tripplanner.data.local.entity.NoteType.CHECKLIST) {
             try {
                 Json.decodeFromString<List<ChecklistItem>>(note.content)
@@ -51,6 +75,7 @@ class OpenedNoteViewModel @Inject constructor(
             note = note,
             checklistItems = checklistItems,
             templates = templates,
+            currentUserRole = role,
             isLoading = false
         )
     }.stateIn(

@@ -2,6 +2,7 @@ package com.pgoorts.tripplanner.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.repository.TripRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,7 +22,8 @@ data class HomeUiState(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val tripRepository: TripRepository
+    private val tripRepository: TripRepository,
+    private val userSessionManager: UserSessionManager
 ) : ViewModel() {
 
     val uiState = tripRepository.getAllTrips()
@@ -55,7 +57,12 @@ class HomeViewModel @Inject constructor(
 
     fun createTrip(destination: String, startDate: String, endDate: String) {
         viewModelScope.launch {
-            tripRepository.createTrip(destination, startDate, endDate)
+            tripRepository.createTrip(
+                destination = destination,
+                startDate = startDate,
+                endDate = endDate,
+                ownerEmail = userSessionManager.userEmail ?: ""
+            )
         }
     }
 

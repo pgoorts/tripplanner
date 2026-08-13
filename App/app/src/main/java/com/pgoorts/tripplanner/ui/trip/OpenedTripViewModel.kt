@@ -3,12 +3,15 @@ package com.pgoorts.tripplanner.ui.trip
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.entity.EventCategory
 import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.data.local.entity.roleFor
 import com.pgoorts.tripplanner.data.repository.EventRepository
 import com.pgoorts.tripplanner.data.repository.NoteRepository
 import com.pgoorts.tripplanner.data.repository.ReminderRepository
@@ -42,6 +45,7 @@ data class OpenedTripUiState(
     val itineraryDays: List<ItineraryDay> = emptyList(),
     val notes: List<NoteEntity> = emptyList(),
     val reminders: List<ReminderEntity> = emptyList(),
+    val currentUserRole: TripRole? = null,
     val isLoading: Boolean = true
 )
 
@@ -51,7 +55,8 @@ class OpenedTripViewModel @Inject constructor(
     private val tripRepository: TripRepository,
     private val eventRepository: EventRepository,
     private val noteRepository: NoteRepository,
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val userSessionManager: UserSessionManager
 ) : ViewModel() {
 
     private val tripId: String = checkNotNull(savedStateHandle["tripId"])
@@ -67,6 +72,7 @@ class OpenedTripViewModel @Inject constructor(
             itineraryDays = buildItinerary(trip, events),
             notes = notes,
             reminders = reminders,
+            currentUserRole = trip?.roleFor(userSessionManager.userEmail),
             isLoading = false
         )
     }.stateIn(
@@ -74,6 +80,14 @@ class OpenedTripViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = OpenedTripUiState()
     )
+
+    /** Saved emails for quick-pick in the Share Trip dialog. */
+    val innerCircle: StateFlow<List<String>> = userSessionManager.observeInnerCircle()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
 
     /**
      * Groups events by day, spanning multi-day events across all days they cover.
@@ -182,5 +196,12 @@ class OpenedTripViewModel @Inject constructor(
 
     fun deleteReminder(reminder: ReminderEntity) {
         viewModelScope.launch { reminderRepository.deleteReminder(reminder) }
+    }
+
+    // --- Sharing ---
+    fun shareTrip(email: String, role: TripRole) {
+        viewModelScope.launch {
+            tripRepository.addCollaborator(tripId, email, role)
+        }
     }
 }

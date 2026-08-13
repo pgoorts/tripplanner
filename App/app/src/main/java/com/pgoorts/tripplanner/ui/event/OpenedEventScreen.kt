@@ -32,6 +32,7 @@ import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
+import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.ZoneId
@@ -48,6 +49,7 @@ fun OpenedEventScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val canEdit = uiState.currentUserRole != TripRole.VIEWER
 
     // Form states
     var title by remember { mutableStateOf("") }
@@ -105,27 +107,29 @@ fun OpenedEventScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val error = validateEventForm(title, startDate, endDate, startTime, endTime)
-                        if (error != null) {
-                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                        } else {
-                            viewModel.updateEvent(
-                                title = title.trim(),
-                                category = category,
-                                location = location.trim().takeIf { it.isNotBlank() },
-                                timezone = timezone.trim(),
-                                startDate = startDate.trim(),
-                                startTime = startTime.trim().takeIf { it.isNotBlank() },
-                                endDate = endDate.trim(),
-                                endTime = endTime.trim().takeIf { it.isNotBlank() },
-                                description = description.trim().takeIf { it.isNotBlank() }
-                            )
-                            Toast.makeText(context, "Saved changes", Toast.LENGTH_SHORT).show()
-                            onBack()
+                    if (canEdit) {
+                        IconButton(onClick = {
+                            val error = validateEventForm(title, startDate, endDate, startTime, endTime)
+                            if (error != null) {
+                                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                            } else {
+                                viewModel.updateEvent(
+                                    title = title.trim(),
+                                    category = category,
+                                    location = location.trim().takeIf { it.isNotBlank() },
+                                    timezone = timezone.trim(),
+                                    startDate = startDate.trim(),
+                                    startTime = startTime.trim().takeIf { it.isNotBlank() },
+                                    endDate = endDate.trim(),
+                                    endTime = endTime.trim().takeIf { it.isNotBlank() },
+                                    description = description.trim().takeIf { it.isNotBlank() }
+                                )
+                                Toast.makeText(context, "Saved changes", Toast.LENGTH_SHORT).show()
+                                onBack()
+                            }
+                        }) {
+                            Icon(Icons.Filled.Save, contentDescription = "Save", tint = Teal300)
                         }
-                    }) {
-                        Icon(Icons.Filled.Save, contentDescription = "Save", tint = Teal300)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -157,21 +161,23 @@ fun OpenedEventScreen(
                             onValueChange = { title = it },
                             label = { Text("Title", color = Grey500) },
                             singleLine = true,
+                            enabled = canEdit,
                             colors = tripTextFieldColors(),
                             modifier = Modifier.fillMaxWidth()
                         )
 
                         // Category Dropdown
                         ExposedDropdownMenuBox(
-                            expanded = isDropdownExpanded,
-                            onExpandedChange = { isDropdownExpanded = it }
+                            expanded = isDropdownExpanded && canEdit,
+                            onExpandedChange = { if (canEdit) isDropdownExpanded = it }
                         ) {
                             OutlinedTextField(
                                 value = category.name.lowercase().replaceFirstChar { it.uppercase() },
                                 onValueChange = {},
                                 readOnly = true,
+                                enabled = canEdit,
                                 label = { Text("Category", color = Grey500) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded && canEdit) },
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -208,6 +214,7 @@ fun OpenedEventScreen(
                                 onValueChange = { location = it },
                                 label = { Text("Location", color = Grey500) },
                                 singleLine = true,
+                                enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -241,8 +248,8 @@ fun OpenedEventScreen(
 
                         // Timezone Picker
                         ExposedDropdownMenuBox(
-                            expanded = isTimezoneExpanded,
-                            onExpandedChange = { isTimezoneExpanded = it }
+                            expanded = isTimezoneExpanded && canEdit,
+                            onExpandedChange = { if (canEdit) isTimezoneExpanded = it }
                         ) {
                             OutlinedTextField(
                                 value = timezone,
@@ -250,8 +257,9 @@ fun OpenedEventScreen(
                                     timezone = it
                                     timezoneSearchQuery = it
                                 },
+                                enabled = canEdit,
                                 label = { Text("Timezone", color = Grey500) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isTimezoneExpanded) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isTimezoneExpanded && canEdit) },
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -293,6 +301,7 @@ fun OpenedEventScreen(
                                 label = { Text("Start Date", color = Grey500) },
                                 placeholder = { Text("YYYY-MM-DD", color = Grey700) },
                                 singleLine = true,
+                                enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -302,6 +311,7 @@ fun OpenedEventScreen(
                                 label = { Text("End Date", color = Grey500) },
                                 placeholder = { Text("YYYY-MM-DD", color = Grey700) },
                                 singleLine = true,
+                                enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -315,6 +325,7 @@ fun OpenedEventScreen(
                                 label = { Text("Start Time", color = Grey500) },
                                 placeholder = { Text("HH:MM (opt)", color = Grey700) },
                                 singleLine = true,
+                                enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -324,6 +335,7 @@ fun OpenedEventScreen(
                                 label = { Text("End Time", color = Grey500) },
                                 placeholder = { Text("HH:MM (opt)", color = Grey700) },
                                 singleLine = true,
+                                enabled = canEdit,
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -335,6 +347,7 @@ fun OpenedEventScreen(
                             onValueChange = { description = it },
                             label = { Text("Description", color = Grey500) },
                             colors = tripTextFieldColors(),
+                            enabled = canEdit,
                             minLines = 3,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -354,10 +367,12 @@ fun OpenedEventScreen(
                             color = White,
                             fontWeight = FontWeight.Bold
                         )
-                        TextButton(onClick = { showAddNoteDialog = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add Note", color = Teal300, fontWeight = FontWeight.SemiBold)
+                        if (canEdit) {
+                            TextButton(onClick = { showAddNoteDialog = true }) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add Note", color = Teal300, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -368,7 +383,7 @@ fun OpenedEventScreen(
                     }
                 } else {
                     items(uiState.notes, key = { it.id }) { note ->
-                        NoteRowItem(note = note, onClick = { onNoteClick(note.id) }, onDelete = { viewModel.deleteNote(note) })
+                        NoteRowItem(note = note, onClick = { onNoteClick(note.id) }, onDelete = { viewModel.deleteNote(note) }, canEdit = canEdit)
                     }
                 }
 
@@ -385,10 +400,12 @@ fun OpenedEventScreen(
                             color = White,
                             fontWeight = FontWeight.Bold
                         )
-                        TextButton(onClick = { showAddReminderDialog = true }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add Reminder", color = Teal300, fontWeight = FontWeight.SemiBold)
+                        if (canEdit) {
+                            TextButton(onClick = { showAddReminderDialog = true }) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add Reminder", color = Teal300, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -402,7 +419,8 @@ fun OpenedEventScreen(
                         ReminderRowItem(
                             reminder = reminder,
                             onClick = { onReminderClick(reminder.id) },
-                            onDelete = { viewModel.deleteReminder(reminder) }
+                            onDelete = { viewModel.deleteReminder(reminder) },
+                            canEdit = canEdit
                         )
                     }
                 }
@@ -432,7 +450,7 @@ fun OpenedEventScreen(
 }
 
 @Composable
-private fun NoteRowItem(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun NoteRowItem(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit, canEdit: Boolean = true) {
     val (noteColor, noteIcon) = noteTypeVisuals(note.type)
     Card(
         onClick = onClick,
@@ -462,15 +480,17 @@ private fun NoteRowItem(note: NoteEntity, onClick: () -> Unit, onDelete: () -> U
                     color = Grey500
                 )
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+            if (canEdit) {
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ReminderRowItem(reminder: ReminderEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun ReminderRowItem(reminder: ReminderEntity, onClick: () -> Unit, onDelete: () -> Unit, canEdit: Boolean = true) {
     val isPast = try { LocalDate.parse(reminder.date).isBefore(LocalDate.now()) } catch (e: Exception) { false }
     Card(
         onClick = onClick,
@@ -512,8 +532,10 @@ private fun ReminderRowItem(reminder: ReminderEntity, onClick: () -> Unit, onDel
                     color = Grey500
                 )
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+            if (canEdit) {
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }

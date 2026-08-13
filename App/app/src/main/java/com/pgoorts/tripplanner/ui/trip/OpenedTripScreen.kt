@@ -2,8 +2,11 @@
 
 package com.pgoorts.tripplanner.ui.trip
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,18 +25,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pgoorts.tripplanner.data.local.entity.ChecklistItem
 import com.pgoorts.tripplanner.data.local.entity.EventCategory
 import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -51,42 +58,63 @@ fun OpenedTripScreen(
     viewModel: OpenedTripViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val innerCircle by viewModel.innerCircle.collectAsState()
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
 
     var showAddEventDialog by remember { mutableStateOf(false) }
     var showAddNoteDialog by remember { mutableStateOf(false) }
     var showAddReminderDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
+
+    val isViewer = uiState.currentUserRole == TripRole.VIEWER
+    val canEdit = !isViewer
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TripTopBar(trip = uiState.trip, onBack = onBack)
+            TripTopBar(
+                trip = uiState.trip,
+                onBack = onBack,
+                canShare = canEdit,
+                onShareClick = { showShareDialog = true },
+                onExportClick = {
+                    val exportText = buildTripExportText(uiState)
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, exportText)
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share Trip"))
+                }
+            )
         },
         floatingActionButton = {
-            when (selectedTab) {
-                0 -> FloatingActionButton(
-                    onClick = { showAddEventDialog = true },
-                    containerColor = Teal300,
-                    contentColor = Navy950,
-                    shape = CircleShape,
-                    modifier = Modifier.size(60.dp)
-                ) { Icon(Icons.Filled.Add, contentDescription = "Add Event", modifier = Modifier.size(28.dp)) }
+            if (canEdit) {
+                when (selectedTab) {
+                    0 -> FloatingActionButton(
+                        onClick = { showAddEventDialog = true },
+                        containerColor = Teal300,
+                        contentColor = Navy950,
+                        shape = CircleShape,
+                        modifier = Modifier.size(60.dp)
+                    ) { Icon(Icons.Filled.Add, contentDescription = "Add Event", modifier = Modifier.size(28.dp)) }
 
-                1 -> FloatingActionButton(
-                    onClick = { showAddNoteDialog = true },
-                    containerColor = Teal300,
-                    contentColor = Navy950,
-                    shape = CircleShape,
-                    modifier = Modifier.size(60.dp)
-                ) { Icon(Icons.Filled.Add, contentDescription = "Add Note", modifier = Modifier.size(28.dp)) }
+                    1 -> FloatingActionButton(
+                        onClick = { showAddNoteDialog = true },
+                        containerColor = Teal300,
+                        contentColor = Navy950,
+                        shape = CircleShape,
+                        modifier = Modifier.size(60.dp)
+                    ) { Icon(Icons.Filled.Add, contentDescription = "Add Note", modifier = Modifier.size(28.dp)) }
 
-                2 -> FloatingActionButton(
-                    onClick = { showAddReminderDialog = true },
-                    containerColor = Teal300,
-                    contentColor = Navy950,
-                    shape = CircleShape,
-                    modifier = Modifier.size(60.dp)
-                ) { Icon(Icons.Filled.Add, contentDescription = "Add Reminder", modifier = Modifier.size(28.dp)) }
+                    2 -> FloatingActionButton(
+                        onClick = { showAddReminderDialog = true },
+                        containerColor = Teal300,
+                        contentColor = Navy950,
+                        shape = CircleShape,
+                        modifier = Modifier.size(60.dp)
+                    ) { Icon(Icons.Filled.Add, contentDescription = "Add Reminder", modifier = Modifier.size(28.dp)) }
+                }
             }
         }
     ) { padding ->
@@ -101,17 +129,20 @@ fun OpenedTripScreen(
                 0 -> ItineraryTab(
                     itineraryDays = uiState.itineraryDays,
                     onEventClick = onEventClick,
-                    onDeleteEvent = { viewModel.deleteEvent(it) }
+                    onDeleteEvent = { viewModel.deleteEvent(it) },
+                    canEdit = canEdit
                 )
                 1 -> NotesTab(
                     notes = uiState.notes,
                     onNoteClick = onNoteClick,
-                    onDeleteNote = { viewModel.deleteNote(it) }
+                    onDeleteNote = { viewModel.deleteNote(it) },
+                    canEdit = canEdit
                 )
                 2 -> RemindersTab(
                     reminders = uiState.reminders,
                     onReminderClick = onReminderClick,
-                    onDeleteReminder = { viewModel.deleteReminder(it) }
+                    onDeleteReminder = { viewModel.deleteReminder(it) },
+                    canEdit = canEdit
                 )
             }
         }
@@ -150,6 +181,18 @@ fun OpenedTripScreen(
             }
         )
     }
+
+    if (showShareDialog) {
+        ShareTripDialog(
+            innerCircle = innerCircle,
+            onDismiss = { showShareDialog = false },
+            onConfirm = { email, role ->
+                viewModel.shareTrip(email, role)
+                showShareDialog = false
+                Toast.makeText(context, "Shared with $email as ${role.name.lowercase().replace('_', ' ')}", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -157,7 +200,13 @@ fun OpenedTripScreen(
 // ──────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun TripTopBar(trip: TripEntity?, onBack: () -> Unit) {
+private fun TripTopBar(
+    trip: TripEntity?,
+    onBack: () -> Unit,
+    canShare: Boolean,
+    onShareClick: () -> Unit,
+    onExportClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -182,8 +231,13 @@ private fun TripTopBar(trip: TripEntity?, onBack: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = {}) {
-                    Icon(Icons.Filled.Share, contentDescription = "Export", tint = Grey500)
+                if (canShare) {
+                    IconButton(onClick = onShareClick) {
+                        Icon(Icons.Filled.PersonAdd, contentDescription = "Share Trip", tint = Grey300)
+                    }
+                }
+                IconButton(onClick = onExportClick) {
+                    Icon(Icons.Filled.IosShare, contentDescription = "Export", tint = Grey300)
                 }
             }
 
@@ -269,7 +323,8 @@ private fun TripTabRow(selectedTab: Int, onTabSelected: (Int) -> Unit) {
 private fun ItineraryTab(
     itineraryDays: List<ItineraryDay>,
     onEventClick: (String) -> Unit,
-    onDeleteEvent: (EventEntity) -> Unit
+    onDeleteEvent: (EventEntity) -> Unit,
+    canEdit: Boolean
 ) {
     if (itineraryDays.isEmpty() || itineraryDays.all { it.events.isEmpty() }) {
         EmptyTabState(icon = Icons.Filled.CalendarMonth, message = "No events yet", hint = "Tap + to add your first itinerary event")
@@ -298,7 +353,8 @@ private fun ItineraryTab(
                     EventCard(
                         itineraryEvent = itEvent,
                         onClick = { onEventClick(itEvent.event.id) },
-                        onDelete = { onDeleteEvent(itEvent.event) }
+                        onDelete = { onDeleteEvent(itEvent.event) },
+                        canEdit = canEdit
                     )
                 }
             }
@@ -349,7 +405,8 @@ private fun DayHeader(date: LocalDate) {
 private fun EventCard(
     itineraryEvent: ItineraryEvent,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    canEdit: Boolean = true
 ) {
     val event = itineraryEvent.event
     val (categoryColor, categoryIcon) = categoryVisuals(event.category)
@@ -443,8 +500,10 @@ private fun EventCard(
                     }
                 }
 
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete event", tint = Grey700, modifier = Modifier.size(16.dp))
+                if (canEdit) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete event", tint = Grey700, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
         }
@@ -459,7 +518,8 @@ private fun EventCard(
 private fun NotesTab(
     notes: List<NoteEntity>,
     onNoteClick: (String) -> Unit,
-    onDeleteNote: (NoteEntity) -> Unit
+    onDeleteNote: (NoteEntity) -> Unit,
+    canEdit: Boolean
 ) {
     if (notes.isEmpty()) {
         EmptyTabState(icon = Icons.Filled.Note, message = "No notes yet", hint = "Tap + to add a note for this trip")
@@ -471,13 +531,13 @@ private fun NotesTab(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(notes, key = { it.id }) { note ->
-            NoteCard(note = note, onClick = { onNoteClick(note.id) }, onDelete = { onDeleteNote(note) })
+            NoteCard(note = note, onClick = { onNoteClick(note.id) }, onDelete = { onDeleteNote(note) }, canEdit = canEdit)
         }
     }
 }
 
 @Composable
-private fun NoteCard(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun NoteCard(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit, canEdit: Boolean = true) {
     val (noteColor, noteIcon) = noteTypeVisuals(note.type)
     Card(
         onClick = onClick,
@@ -517,8 +577,10 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit
                     color = Grey500
                 )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete note", tint = Grey700, modifier = Modifier.size(16.dp))
+            if (canEdit) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete note", tint = Grey700, modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
@@ -532,7 +594,8 @@ private fun NoteCard(note: NoteEntity, onClick: () -> Unit, onDelete: () -> Unit
 private fun RemindersTab(
     reminders: List<ReminderEntity>,
     onReminderClick: (String) -> Unit,
-    onDeleteReminder: (ReminderEntity) -> Unit
+    onDeleteReminder: (ReminderEntity) -> Unit,
+    canEdit: Boolean
 ) {
     if (reminders.isEmpty()) {
         EmptyTabState(icon = Icons.Filled.Notifications, message = "No reminders yet", hint = "Tap + to set a reminder for this trip")
@@ -544,13 +607,13 @@ private fun RemindersTab(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(reminders, key = { it.id }) { reminder ->
-            ReminderCard(reminder = reminder, onClick = { onReminderClick(reminder.id) }, onDelete = { onDeleteReminder(reminder) })
+            ReminderCard(reminder = reminder, onClick = { onReminderClick(reminder.id) }, onDelete = { onDeleteReminder(reminder) }, canEdit = canEdit)
         }
     }
 }
 
 @Composable
-private fun ReminderCard(reminder: ReminderEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun ReminderCard(reminder: ReminderEntity, onClick: () -> Unit, onDelete: () -> Unit, canEdit: Boolean = true) {
     val isPast = try { LocalDate.parse(reminder.date).isBefore(LocalDate.now()) } catch (e: Exception) { false }
     Card(
         onClick = onClick,
@@ -603,8 +666,10 @@ private fun ReminderCard(reminder: ReminderEntity, onClick: () -> Unit, onDelete
                     )
                 }
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete reminder", tint = Grey700, modifier = Modifier.size(16.dp))
+            if (canEdit) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete reminder", tint = Grey700, modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
@@ -813,6 +878,110 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Share Trip Dialog
+// ──────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ShareTripDialog(
+    innerCircle: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (String, TripRole) -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf(TripRole.VIEWER) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Navy800,
+        title = { Text("Share Trip", style = MaterialTheme.typography.titleLarge, color = White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TripTextField(value = email, onValueChange = { email = it; error = null }, label = "Email address")
+
+                if (innerCircle.isNotEmpty()) {
+                    Text("From Inner Circle", style = MaterialTheme.typography.labelMedium, color = Grey500)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        innerCircle.forEach { contact ->
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Teal300.copy(alpha = 0.15f),
+                                modifier = Modifier.clickable { email = contact; error = null }
+                            ) {
+                                Text(
+                                    text = contact,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Teal200,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Text("Role", style = MaterialTheme.typography.labelMedium, color = Grey500)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RoleChip(
+                        label = "Viewer",
+                        selected = role == TripRole.VIEWER,
+                        onClick = { role = TripRole.VIEWER },
+                        modifier = Modifier.weight(1f)
+                    )
+                    RoleChip(
+                        label = "Co-owner",
+                        selected = role == TripRole.CO_OWNER,
+                        onClick = { role = TripRole.CO_OWNER },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmed = email.trim()
+                    if (trimmed.isBlank() || !trimmed.contains("@")) {
+                        error = "Please enter a valid email address"
+                        return@Button
+                    }
+                    onConfirm(trimmed, role)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Teal300, contentColor = Navy950)
+            ) { Text("Share", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Grey300) } }
+    )
+}
+
+@Composable
+private fun RoleChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) Teal300 else Navy700,
+        border = if (!selected) BorderStroke(1.dp, Grey700) else null
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) Navy950 else Grey300,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp)
+        )
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Shared helpers & utility composables
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -892,4 +1061,76 @@ private fun validateReminderInput(text: String, date: String, time: String): Str
     try { LocalDate.parse(date.trim(), DateTimeFormatter.ISO_LOCAL_DATE) } catch (e: Exception) { return "Date must be YYYY-MM-DD" }
     if (!time.trim().matches(Regex("\\d{2}:\\d{2}"))) return "Time must be HH:MM"
     return null
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Trip export
+// ──────────────────────────────────────────────────────────────────────────────
+
+private fun buildTripExportText(state: OpenedTripUiState): String {
+    val trip = state.trip
+    return buildString {
+        appendLine(trip?.destination ?: "Trip")
+        if (trip != null) {
+            appendLine(formatDateRange(trip.startDate, trip.endDate))
+        }
+        appendLine()
+
+        appendLine("ITINERARY")
+        appendLine("---------")
+        if (state.itineraryDays.all { it.events.isEmpty() }) {
+            appendLine("No events.")
+        } else {
+            state.itineraryDays.forEach { day ->
+                if (day.events.isEmpty()) return@forEach
+                appendLine(day.date.format(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")))
+                day.events.forEach { itEvent ->
+                    val event = itEvent.event
+                    val timeLabel = if (event.startTime != null) {
+                        if (event.endTime != null) "${event.startTime} - ${event.endTime}" else event.startTime
+                    } else "All day"
+                    val dayLabel = itEvent.multiDayLabel?.let { " ($it)" } ?: ""
+                    append("  - $timeLabel: ${event.title}$dayLabel")
+                    if (!event.location.isNullOrBlank()) append(" @ ${event.location}")
+                    appendLine()
+                }
+            }
+        }
+        appendLine()
+
+        appendLine("NOTES")
+        appendLine("-----")
+        if (state.notes.isEmpty()) {
+            appendLine("No notes.")
+        } else {
+            state.notes.forEach { note -> append(formatNoteForExport(note)) }
+        }
+        appendLine()
+
+        appendLine("REMINDERS")
+        appendLine("---------")
+        if (state.reminders.isEmpty()) {
+            appendLine("No reminders.")
+        } else {
+            state.reminders.forEach { reminder ->
+                appendLine("  - ${formatDate(reminder.date)} at ${reminder.time}: ${reminder.text}")
+            }
+        }
+    }
+}
+
+private fun formatNoteForExport(note: NoteEntity): String = buildString {
+    append("- ${note.title}")
+    if (note.type == NoteType.CHECKLIST) {
+        appendLine()
+        val items = try {
+            Json.decodeFromString<List<ChecklistItem>>(note.content)
+        } catch (e: Exception) {
+            emptyList()
+        }
+        items.forEach { item -> appendLine("    [${if (item.isChecked) "x" else " "}] ${item.text}") }
+    } else {
+        if (note.content.isNotBlank()) append(": ${note.content}")
+        appendLine()
+    }
 }

@@ -1,0 +1,92 @@
+TripPlanner Block 9 Verification Report
+========================================
+
+Goal: Complete the trip sharing features, role enforcement in the UI, and plain-text trip exporting.
+
+Implementation Details:
+-----------------------
+1. Trip Role Model:
+   - TripRole.kt: New enum `TripRole { CO_OWNER, VIEWER }` plus an extension function
+     `TripEntity.roleFor(email: String?): TripRole?` that decodes the entity's JSON
+     `collaborators` map and resolves the caller's role. An email with no entry (or a
+     trip with unparseable/empty collaborators) resolves to `null`, which is treated as
+     unrestricted client-side (fail-open) since the Firestore security rules deployed in
+     Block 8 remain the actual write-access backstop.
+   - TripRepository.kt: Added `suspend fun addCollaborator(tripId, email, role: TripRole)`,
+     which loads the trip, merges the new entry into the existing collaborators map, and
+     routes through the existing `updateTrip()` so the change is marked `PENDING_UPDATE`
+     and picked up by the Block 8 `SyncWorker` on its next periodic run.
+   - Bug fix (pre-existing, blocking this block): `HomeViewModel.createTrip()` never passed
+     `ownerEmail` to `TripRepository.createTrip()`, so every trip was created with an empty
+     `collaborators` map and no one was ever recorded as CO_OWNER. Fixed by injecting
+     `UserSessionManager` into `HomeViewModel` and passing `userSessionManager.userEmail`
+     as the owner on trip creation.
+
+2. Share Trip UI (Step 9.1):
+   - OpenedTripScreen.kt: Added a `ShareTripDialog` reachable from a new "Share Trip"
+     icon in the trip top bar (visible only to CO_OWNERs). It has an email text field,
+     a row of quick-pick chips sourced from the user's Inner Circle
+     (`UserSessionManager.observeInnerCircle()`, exposed via a new
+     `OpenedTripViewModel.innerCircle` StateFlow), and a Viewer/Co-owner role selector
+     (defaults to Viewer, the least-privileged option). Confirming calls the new
+     `OpenedTripViewModel.shareTrip(email, role)`, which delegates to
+     `TripRepository.addCollaborator`.
+
+3. Viewer Mode UI Constraints (Step 9.2):
+   - `OpenedTripUiState`, `OpenedEventUiState`, `OpenedNoteUiState` gained a
+     `currentUserRole: TripRole?` field; `OpenedReminderViewModel` gained a sibling
+     `currentUserRole` StateFlow (its screen has no wrapping UiState class).
+   - OpenedTripViewModel derives the role directly from the already-loaded trip's
+     `collaborators` map. OpenedEventViewModel / OpenedNoteViewModel / OpenedReminderViewModel
+     have no `tripId` nav argument, so each derives its role via
+     `flatMapLatest` on the loaded entity's `tripId`, resolving the parent trip through
+     `TripRepository.getTripById` and computing the role from
+     `UserSessionManager.userEmail`.
+   - In all four screens, when `currentUserRole == TripRole.VIEWER`:
+     * Save/edit buttons, FABs (Add Event/Note/Reminder), and Add Note/Add Reminder/Add
+       Checklist Item/Merge Template triggers are hidden.
+     * All Delete icons (events, notes, reminders, checklist items) are hidden.
+     * All editable text fields, dropdowns, and checkboxes are set `enabled = false` /
+       `readOnly = true` (OpenedNoteScreen auto-saves on every keystroke, so its fields
+       use `readOnly` to block input at the source rather than merely disabling a Save
+       button).
+     * The Share Trip icon on OpenedTripScreen is hidden for Viewers.
+   - Read-only, non-mutating actions (opening a map link, opening a note's URL) remain
+     available to Viewers.
+
+4. Trip Exporting (Step 9.3):
+   - OpenedTripScreen.kt: Added `buildTripExportText(state: OpenedTripUiState): String`,
+     which formats the trip destination/date range, the itinerary grouped by day (reusing
+     the same `itineraryDays` structure and multi-day "Day X of Y" labelling used on
+     screen), all notes (checklist notes are expanded into `[x]`/`[ ]` line items), and all
+     reminders into a single plain-text block. Wired to a new "Export" icon (always visible,
+     including to Viewers) in the trip top bar that launches
+     `Intent.createChooser(Intent(ACTION_SEND).apply { type = "text/plain"; putExtra(EXTRA_TEXT, ...) }, "Share Trip")`,
+     matching the existing `ACTION_VIEW` + try/catch-free chooser pattern already used
+     elsewhere in the app for external intents.
+
+Build Verification:
+-------------------
+- `.\gradlew compileDebugKotlin` — BUILD SUCCESSFUL (only pre-existing deprecation warnings
+  for AutoMirrored icon variants, unchanged from prior blocks).
+- `.\gradlew assembleDebug` — BUILD SUCCESSFUL.
+
+Manual Verification Steps:
+--------------------------
+1. Sign in as User A, create a trip (confirms User A is now recorded as CO_OWNER in the
+   trip's collaborators map — previously this map was always empty).
+2. Open the trip, tap "Share Trip", enter User B's email (or pick from Inner Circle,
+   configured on the Profile screen), select "Viewer", confirm. Verify a toast confirms
+   the share and that the change syncs to Firestore on the next SyncWorker run (or trigger
+   sync manually per the Block 8 verification steps).
+3. Sign in as User B on a second device/emulator once the shared trip has synced down.
+   Open the trip and confirm: no Share icon, no Add Event/Note/Reminder FABs, no delete
+   icons on any event/note/reminder card, and the Export icon is still present and
+   functional.
+4. As User B, open an event, a note, and a reminder belonging to the shared trip and
+   confirm all fields are read-only, Save buttons are hidden, and Add Note/Add
+   Reminder/Merge Template/Add Checklist Item controls are hidden. Checklist checkboxes
+   should also be disabled.
+5. As User A (CO_OWNER), tap "Export" on a trip with events, notes, and reminders and
+   verify the Android system share sheet opens with a single readable text block
+   containing the itinerary, notes, and reminders.

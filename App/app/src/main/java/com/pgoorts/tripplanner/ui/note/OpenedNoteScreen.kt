@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
+import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.theme.*
 
 @Composable
@@ -38,6 +39,7 @@ fun OpenedNoteScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val canEdit = uiState.currentUserRole != TripRole.VIEWER
 
     var noteTitle by remember { mutableStateOf("") }
     var textContent by remember { mutableStateOf("") }
@@ -64,6 +66,7 @@ fun OpenedNoteScreen(
                             noteTitle = it
                             viewModel.updateNoteTitle(it)
                         },
+                        readOnly = !canEdit,
                         placeholder = { Text("Note Title", color = Grey500) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -123,6 +126,7 @@ fun OpenedNoteScreen(
                                 textContent = it
                                 viewModel.updateTextContent(it)
                             },
+                            readOnly = !canEdit,
                             placeholder = { Text("Start typing your note here...", color = Grey500) },
                             colors = tripTextFieldColors(),
                             modifier = Modifier
@@ -138,44 +142,48 @@ fun OpenedNoteScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Checklist Items", style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
-                            TextButton(onClick = { showTemplateDialog = true }) {
-                                Icon(Icons.Filled.Merge, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Merge Template", color = Teal300, fontWeight = FontWeight.SemiBold)
+                            if (canEdit) {
+                                TextButton(onClick = { showTemplateDialog = true }) {
+                                    Icon(Icons.Filled.Merge, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Merge Template", color = Teal300, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
 
                         // Add item row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = newChecklistItemText,
-                                onValueChange = { newChecklistItemText = it },
-                                placeholder = { Text("Add new checklist item...", color = Grey500) },
-                                colors = tripTextFieldColors(),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            IconButton(
-                                onClick = {
-                                    if (newChecklistItemText.isNotBlank()) {
-                                        viewModel.addChecklistItem(newChecklistItemText)
-                                        newChecklistItemText = ""
-                                    }
-                                },
-                                enabled = newChecklistItemText.isNotBlank(),
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (newChecklistItemText.isNotBlank()) Teal300 else Navy700)
+                        if (canEdit) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = "Add Item",
-                                    tint = if (newChecklistItemText.isNotBlank()) Navy950 else Grey500
+                                OutlinedTextField(
+                                    value = newChecklistItemText,
+                                    onValueChange = { newChecklistItemText = it },
+                                    placeholder = { Text("Add new checklist item...", color = Grey500) },
+                                    colors = tripTextFieldColors(),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                IconButton(
+                                    onClick = {
+                                        if (newChecklistItemText.isNotBlank()) {
+                                            viewModel.addChecklistItem(newChecklistItemText)
+                                            newChecklistItemText = ""
+                                        }
+                                    },
+                                    enabled = newChecklistItemText.isNotBlank(),
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (newChecklistItemText.isNotBlank()) Teal300 else Navy700)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Add Item",
+                                        tint = if (newChecklistItemText.isNotBlank()) Navy950 else Grey500
+                                    )
+                                }
                             }
                         }
 
@@ -210,6 +218,7 @@ fun OpenedNoteScreen(
                                             Checkbox(
                                                 checked = item.isChecked,
                                                 onCheckedChange = { viewModel.toggleChecklistItem(index) },
+                                                enabled = canEdit,
                                                 colors = CheckboxDefaults.colors(
                                                     checkedColor = Teal300,
                                                     checkmarkColor = Navy950
@@ -224,8 +233,10 @@ fun OpenedNoteScreen(
                                                     .weight(1f)
                                                     .padding(start = 8.dp)
                                             )
-                                            IconButton(onClick = { viewModel.removeChecklistItem(index) }) {
-                                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+                                            if (canEdit) {
+                                                IconButton(onClick = { viewModel.removeChecklistItem(index) }) {
+                                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
+                                                }
                                             }
                                         }
                                     }
@@ -242,6 +253,7 @@ fun OpenedNoteScreen(
                                 textContent = it
                                 viewModel.updateTextContent(it)
                             },
+                            readOnly = !canEdit,
                             label = { Text("Link URL", color = Grey500) },
                             singleLine = true,
                             colors = tripTextFieldColors(),

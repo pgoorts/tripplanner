@@ -3,7 +3,11 @@ package com.pgoorts.tripplanner.data.repository
 import com.pgoorts.tripplanner.data.local.dao.TripDao
 import com.pgoorts.tripplanner.data.local.entity.SyncState
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.data.local.entity.TripRole
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -51,6 +55,18 @@ class TripRepository @Inject constructor(
             updatedAt = System.currentTimeMillis(),
             syncState = SyncState.PENDING_UPDATE
         ))
+    }
+
+    /** Adds or updates a collaborator's role on the trip and marks it pending sync. */
+    suspend fun addCollaborator(tripId: String, email: String, role: TripRole) {
+        val trip = tripDao.getTripById(tripId).first() ?: return
+        val current = try {
+            Json.decodeFromString<Map<String, String>>(trip.collaborators).toMutableMap()
+        } catch (e: Exception) {
+            mutableMapOf()
+        }
+        current[email] = role.name
+        updateTrip(trip.copy(collaborators = Json.encodeToString(current)))
     }
 
     suspend fun deleteTrip(trip: TripEntity) {
