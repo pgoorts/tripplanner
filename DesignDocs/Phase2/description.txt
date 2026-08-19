@@ -1,0 +1,1 @@
+Ths phase, we'll publish the app so we don't have to use debug keys etc. The app is shared with a private number of people, we don't want general availability. Make a plan to do this. The result of this phase is both code changes for publishing, and a manual to do that.

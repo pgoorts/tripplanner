@@ -1,0 +1,50 @@
+TripPlanner Phase 2 Tech Stack Proposal: Private Publishing
+=============================================================
+
+This document proposes the services, tools, and build configuration changes needed to release TripPlanner to a private Internal testing group on Google Play, per description_detail.txt. There is no new data-gathering service or ML model involved in this phase; it is purely release infrastructure.
+
+1. Distribution Service
+------------------------
+*   **Google Play Console** (Internal testing track):
+    *   *Purpose*: Hosts the app for the tester group, handles install/update delivery, tester opt-in management.
+    *   *Account*: New Google Play Developer account required (one-time $25 fee + identity verification).
+*   **Google Play App Signing**:
+    *   *Purpose*: Google-mandated (and required for Android App Bundles) key management model. The developer generates a local **upload key** used only to sign the bundle before upload; Google re-signs the final artifact with an **app signing key** that Google holds securely on the developer's behalf. This means an upload key can be reset by Google if lost, whereas losing a self-managed signing key (the old model) would permanently break the ability to update the app.
+    *   *Why this instead of fully self-managed signing*: Matches the developer's earlier answer ("generate now, I store it myself") while avoiding the old model's single point of catastrophic failure — Play App Signing is also required by default for any new app uploading an .aab.
+
+2. Build Artifact & Signing Configuration
+-------------------------------------------
+*   **Android App Bundle (.aab)** via `./gradlew bundleRelease` — Play Console requires AAB (not APK) for new app uploads.
+*   **`keytool`** (bundled with the JDK already used to build the app): generates the upload keystore (`.jks`). No new dependency.
+*   **Gradle `signingConfigs` block** in `App/app/build.gradle.kts`:
+    *   Reads keystore path/passwords from a local `keystore.properties` file (or environment variables), which is **not** committed to git.
+    *   `buildTypes { release { signingConfig = signingConfigs.getByName("release") ... } }`, replacing the current unsigned/default release config.
+*   **`.gitignore` update**: ensure `keystore.properties` and `*.jks`/`*.keystore` are excluded, so the signing key never ends up in version control.
+*   **Versioning**: `versionCode` (integer, must strictly increase on every Play Console upload) and `versionName` (human-readable, e.g. `1.1`) in `build.gradle.kts`, bumped manually for each release per the manual's "day 2" update workflow.
+*   **Minification**: Proposal is to leave `isMinifyEnabled = false` for this phase. Enabling R8/ProGuard shrinking now adds a class of release-only bugs (missing keep rules for Hilt/Compose/reflection-based Firebase code) that we have no testing infrastructure to catch before it reaches testers. Can be revisited once the release process is stable.
+
+3. Play Console Required Declarations
+----------------------------------------
+Even for Internal testing, Google Play requires a few app-level declarations to be completed before any release (including internal) can be rolled out:
+*   **Data safety section**: Declares what user data the app collects/shares (account info via Google Sign-in, trip/event/note/reminder content via Firestore). Filled in via the Play Console UI — no new library needed.
+*   **Content rating questionnaire**: Standard questionnaire in Play Console; TripPlanner has no mature content, expected to receive the lowest rating tier.
+*   **Privacy policy URL**: Required because the app collects personal data and uses Google Sign-in. Needs a small, publicly reachable static page.
+
+4. Privacy Policy Hosting
+----------------------------
+*   **Firebase Hosting**:
+    *   *Purpose*: Host a single static privacy policy page at a public URL to satisfy the Play Console requirement above.
+    *   *Why*: The project already has a Firebase project provisioned (`google-services.json` present, Firestore already in use per Phase 1), so this adds no new account/service — only the Firebase Hosting feature within the existing project. Avoids depending on GitHub Pages or a third-party host for a single page.
+    *   *Scope*: One static HTML file, no build tooling, no framework — deployed via the Firebase CLI as a one-time (and rarely-updated) manual step, documented in the manual.
+
+5. Firebase Environment
+--------------------------
+*   **Proposal**: Reuse the existing Firebase project (same `google-services.json`, same Firestore instance) for the release build rather than standing up a separate "production" Firebase project.
+    *   *Why*: The phase's own scope is a small private tester group, not environment isolation. Splitting debug/release Firebase projects (separate config, separate Firestore security rules, separate `google-services.json` per build variant) is real added complexity that isn't required by the stated goal and can be revisited later if debug testing ever risks polluting real testers' data.
+    *   *Consequence to flag*: developer's own debug-build usage and testers' release-build usage will share the same Firestore data. If this is undesirable, say so now and this section will be revised before implementation.
+
+6. Out of Scope for This Phase
+----------------------------------
+*   Gradle Play Publisher or any automated upload pipeline — uploads are done manually through the Play Console web UI, matching the "no CI/CD" constraint from description_detail.txt.
+*   Firebase App Distribution / Crashlytics — not needed since Play Console Internal testing is the chosen distribution channel.
+*   Play Integrity API or other anti-abuse tooling — unnecessary for a small, known tester list.

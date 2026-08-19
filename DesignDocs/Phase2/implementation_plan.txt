@@ -1,0 +1,106 @@
+TripPlanner Phase 2 Implementation Plan: Private Publishing
+==============================================================
+
+This document outlines the step-by-step implementation plan for private-publishing TripPlanner via Google Play Internal testing. The plan is divided into 5 blocks. Each block builds on the previous ones and ends with a concrete verification step. Each step is designed to be self-contained and descriptive enough to allow work to pause and resume seamlessly with only the design documents and code as context.
+
+Refer to the following files for specification details:
+- Phase description: description_detail.txt
+- Tech stack: techstack.txt
+
+Note on scope: several steps in this plan produce code/config that only the developer can complete (creating a Google Play Developer account, uploading a build to Play Console, running an authenticated `firebase deploy`) because they require the developer's own Google credentials. Where that's the case, the block still produces everything needed (files, exact commands, generated secrets) so the developer's remaining action is mechanical and documented in the manual (Block 5).
+
+---
+
+Block 1: Release Build Environment Verification
+==================================================
+Goal: Confirm the environment can produce a release build artifact before any signing/config changes are layered on.
+
+Step 1.1: Verify toolchain
+- Confirm JDK, `keytool`, Android SDK, and the Gradle wrapper are available and match what Phase 1 used (already confirmed present: JDK 17, keytool, Android SDK at /opt/android-sdk, gradlew).
+
+Step 1.2: Baseline release build
+- Run `./gradlew bundleRelease` (or `assembleRelease` if bundling fails for an unrelated reason) from `App/` and confirm it currently succeeds, producing an **unsigned** release artifact. This establishes the pre-signing baseline so any failure introduced in later blocks is attributable to this phase's changes.
+
+Step 1.3: Block Verification
+- `./gradlew bundleRelease` completes successfully and `app/build/outputs/bundle/release/app-release.aab` exists.
+
+---
+
+Block 2: Release Signing Key & Gradle Signing Configuration
+================================================================
+Goal: Generate the upload keystore and wire real release signing into the build, replacing the unsigned baseline from Block 1.
+
+Step 2.1: Generate the upload keystore
+- Use `keytool -genkeypair` to create `upload-keystore.jks` with a strong, randomly generated store password and key password, RSA 2048-bit, 25-year validity, alias `tripplanner-upload`.
+- The keystore file and its passwords are handed directly to the developer (outside of git) at the end of this step — this is the single most important artifact in this phase; losing it before Play App Signing is enrolled means a new app listing would be required.
+
+Step 2.2: Wire signing into Gradle
+- Add a `keystore.properties` file (developer's local machine, not committed) with `storeFile`, `storePassword`, `keyAlias`, `keyPassword`.
+- Add a `keystore.properties.example` template (committed) documenting the expected keys with placeholder values.
+- Update `App/.gitignore` to exclude `keystore.properties`, `*.jks`, and `*.keystore`.
+- Update `App/app/build.gradle.kts`: load `keystore.properties` if present, define a `release` `signingConfig`, and attach it to `buildTypes.release`. Fail the build with a clear error message if `keystore.properties` is missing, rather than silently producing an unsigned build.
+
+Step 2.3: Versioning convention
+- Document (in code comments or the manual) the `versionCode`/`versionName` bump convention: increment `versionCode` by 1 and update `versionName` for every Play Console upload, starting at `versionCode = 1`, `versionName = "1.0"` for the first internal release (already the current default — confirm and keep for the first release).
+
+Step 2.4: Block Verification
+- `./gradlew bundleRelease` produces a **signed** `.aab`. Verify the signature with `jarsigner -verify -verbose -certs app-release.aab` (or `apksigner verify` if using an APK), confirming it reports as signed.
+- Confirm `git status` shows no keystore file or `keystore.properties` as tracked/staged.
+
+---
+
+Block 3: Release-Build Correctness Pass
+===========================================
+Goal: Make sure the signed release build actually works end-to-end for testers, not just that it compiles. The main known risk is Google Sign-in, which is tied to the signing certificate.
+
+Step 3.1: Codebase audit for debug-only behavior
+- Search for any `BuildConfig.DEBUG`-gated code, hardcoded debug flags, or emulator-only assumptions that could behave differently in a release build. (An initial pass during planning found none in the current codebase — this step re-verifies against the code as it stands at implementation time.)
+
+Step 3.2: Google Sign-in certificate fingerprint
+- Extract the SHA-1 (and SHA-256) certificate fingerprint from the new upload keystore via `keytool -list -v -keystore upload-keystore.jks -alias tripplanner-upload`.
+- Add this fingerprint to the Firebase project's Android app configuration (Firebase Console → Project Settings → Your Apps), alongside the existing debug fingerprint — both must be present since debug and release builds are signed differently and Google Sign-in validates against the calling app's actual signing certificate.
+- Note for the manual: once the app's first release is uploaded and Google Play App Signing is enrolled (Block 2), Play re-signs the app with its own app signing certificate, which has a *different* SHA-1 than the local upload key. That certificate's fingerprint (visible in Play Console → Setup → App signing) must also be added to Firebase, or Google Sign-in will fail specifically for testers installing from Play, even though it works when the developer side-loads the release build directly. This is a two-step fingerprint registration, not one.
+
+Step 3.3: Manual smoke test
+- Build and install the signed release artifact on a physical device or emulator (`./gradlew installRelease` or manual APK install) and confirm: app launches, Google Sign-in succeeds, an existing trip loads from Firestore, and creating/editing a trip/event/note/reminder syncs correctly. This step requires a real Google account and is expected to be run by the developer, since it depends on interactive sign-in.
+
+Step 3.4: Block Verification
+- Developer confirms the smoke test in Step 3.3 passes on a real device with the release build.
+
+---
+
+Block 4: Privacy Policy Page & Firebase Hosting
+====================================================
+Goal: Produce and host the privacy policy page required by Play Console's data safety / app content setup.
+
+Step 4.1: Write the privacy policy content
+- Draft a short, plain-language privacy policy page (static HTML) describing: what data is collected (Google account info, trip/event/note/reminder content), how it's stored (Firebase/Firestore), that it's shared only with users the trip owner explicitly shares with, and a contact email for questions.
+
+Step 4.2: Firebase Hosting configuration
+- Add `firebase.json` and a `public/` directory (or equivalent) at the project root (or within `App/`, to be decided at implementation time based on where it fits best) containing the privacy policy page, configured for Firebase Hosting.
+- Document the exact deploy command (`firebase deploy --only hosting`) for the manual — this requires the developer's own `firebase login`, so it isn't run by the agent.
+
+Step 4.3: Block Verification
+- Firebase Hosting config is present and structurally valid (`firebase.json` references the correct public directory and the privacy policy file exists in it).
+- Developer runs the deploy command and confirms the page loads at the resulting `*.web.app` (or custom) URL — this URL is what gets entered into Play Console in Block 5.
+
+---
+
+Block 5: Publishing Manual
+===============================
+Goal: Produce the single, step-by-step manual the developer follows to complete and repeat the actual publishing process (the parts that require the developer's own Google/Play credentials and can't be done by the agent).
+
+Step 5.1: Write the manual
+- Create `DesignDocs/Phase2/publishing_manual.txt` covering, in order:
+  1. Creating the Google Play Developer account (fee, identity verification, expected wait time).
+  2. Creating the app entry in Play Console.
+  3. Completing the data safety section and content rating questionnaire, and entering the privacy policy URL from Block 4.
+  4. Enrolling in Google Play App Signing during the first upload.
+  5. Uploading the signed `.aab` from Block 2/3 to the Internal testing track.
+  6. Registering the Play App Signing certificate's SHA-1 with Firebase (from Step 3.2), since this can only be done *after* the first upload.
+  7. Adding the tester email list (the known <10 addresses) to the Internal testing track and sharing the opt-in link.
+  8. What the tester's install experience looks like (opt-in link → Play Store install, same as any app).
+  9. The repeatable "day 2" update workflow: bump `versionCode`/`versionName`, rebuild, re-run the smoke test, upload the new `.aab` to the same track.
+
+Step 5.2: Block Verification
+- Developer reads through the manual and confirms each step is clear and matches what they see in their own Play Console / Firebase Console, then (at their own pace, outside this plan) executes it to produce the first internal release.

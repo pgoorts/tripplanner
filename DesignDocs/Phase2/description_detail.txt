@@ -1,0 +1,56 @@
+TripPlanner Phase 2 Detailed Description: Private Publishing
+==============================================================
+
+1. Purpose and Vision
+----------------------
+Phase 1 produced a working app that is built and installed using debug builds and debug signing keys. This is not suitable for handing the app to real people outside the developer's own machine: debug builds are unsigned for distribution, are not straightforward to install without a development environment, and provide no mechanism for the developer to push updates to other people's devices.
+
+The purpose of this phase is to turn TripPlanner into something that can be reliably installed and updated on the phones of a small, known group of people, without making the app available to the general public or requiring those people to have a development environment. At the end of this phase, the developer should be able to build a release version of the app, make it available to an approved list of testers, and those testers should be able to install and receive updates through a normal app-store-like flow.
+
+This phase deliberately stops short of a full public release. There is no App Store Optimization, no public listing, no monetization, and no expectation that anyone outside the approved tester list can find or install the app.
+
+2. Distribution Model
+----------------------
+The app will be distributed through the Google Play Console's "Internal testing" track:
+*   The developer maintains a list of tester email addresses inside the Play Console (a handful of people, under 10, with emails already known/ready).
+*   Testers are sent (or use) an opt-in link. Once opted in, they can install the app from the Play Store using their normal Google account, the same way they would install any other app.
+*   The app is not publicly listed or discoverable in the Play Store outside of testers who have the opt-in link and have accepted it.
+*   Internal testing releases are not subject to Google's full policy/content review, so updates can be pushed quickly.
+*   A Google Play Developer account does not yet exist for this project; creating one is in scope for this phase (one-time account setup, including identity verification, which can take Google a day or two to process).
+
+Distribution beyond this (closed testing, production/public release) is explicitly out of scope for this phase and can be revisited in a future phase if the app should ever become more widely available.
+
+3. Deliverables
+-----------------
+This phase produces two things:
+
+### 3.1 Code / Configuration Changes
+*   A proper release build configuration for the Android app, replacing reliance on debug keys, so that release (not debug) builds are what gets uploaded and distributed.
+*   A release signing key ("upload key") generated for this app, used to sign the release build. The developer will be the sole holder of this key and its credentials; nothing about the key is retained by the agent once handed off.
+*   Any application-level changes needed for a correct release build to work end-to-end (e.g. anything that only works in a debug build today, and app identification/versioning needed for Play Console uploads).
+*   Whatever project files (build configuration, Play Console metadata like store listing text/icon if required even for internal testing) are needed to get an Android App Bundle accepted by the Play Console.
+
+### 3.2 Manual
+A step-by-step, non-technical-friendly document the developer can follow (and re-follow for future updates) covering:
+*   Creating the Google Play Developer account.
+*   Creating the app entry in Play Console and completing whatever minimum app setup Google requires before any release (even internal) can be uploaded, such as the data safety section, content rating questionnaire, and privacy policy — since this app stores user data (trips, events, notes, reminders) in the cloud and uses Google Sign-in.
+*   Generating/locating the release signing key and keeping it safe (this is a one-time, sensitive artifact — losing it means future updates can never be signed to match the already-installed app; the manual should make the stakes of this clear).
+*   Building a release version of the app and uploading it to the Internal testing track.
+*   Adding/removing testers from the internal testing tester list.
+*   How the developer sends the opt-in link to testers, and what the tester's install experience looks like.
+*   How to ship a future update (i.e. the repeatable "day 2" workflow, not just the one-time setup), including version numbering.
+
+4. Out of Scope
+-----------------
+*   Closed testing, open testing, or full production/public release on the Play Store.
+*   Store listing polish, screenshots, promotional assets, ASO.
+*   Any monetization, ads, or in-app purchases.
+*   iOS or any other platform.
+*   Automated build/release pipelines (CI/CD) — the manual describes a manual, developer-run process.
+
+5. Constraints Already Decided
+--------------------------------
+*   Distribution track: Google Play Internal testing (not closed testing), chosen specifically because it requires no Google policy review and has no minimum tester count or duration, matching the "private, no general availability" requirement.
+*   No existing Google Play Developer account — account creation is part of this phase's manual.
+*   The release signing key will be generated as part of this phase's code changes and handed to the developer to store themselves.
+*   Tester list is small (under 10 people) with emails already known, so a direct tester email list in Play Console is sufficient (no Google Group needed).
