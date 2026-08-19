@@ -1,0 +1,54 @@
+TripPlanner - Phase 2 - Block 4 Verification Report
+====================================================
+Block: Privacy Policy Page & Firebase Hosting
+Date: 2026-08-19
+Status: COMPLETED SUCCESSFULLY
+
+Executed Steps:
+---------------
+1. Step 4.1: Wrote the privacy policy content
+   - File: public/index.html (project root, not inside App/ — see rationale below).
+   - Plain-language static HTML covering: what data is collected (Google account info via
+     Google Sign-in; trip/event/note/reminder content), how it's stored (Firebase
+     Authentication + Cloud Firestore), that trip content is private by default and shared
+     only with people the trip owner explicitly shares with, data retention/deletion,
+     a children's-privacy note, a changes-to-this-policy note, and a contact section.
+   - Contact email: initially left as a `[YOUR_CONTACT_EMAIL]` placeholder pending the
+     developer's decision (Firebase Hosting pages are publicly reachable — required by Google
+     Play for the privacy policy URL — so this is not tester-restricted; confirmed with the
+     developer before finalizing). Now set to `tripplanner@patrikgoorts.com` (a dedicated
+     address rather than the developer's personal one), used as both the link text and the
+     mailto: target in the Contact section.
+   - The developer/operator is referred to generically ("TripPlanner", "we"/"us") with no
+     personal or business name disclosed on the page.
+   - No external resources, fonts, or scripts — single self-contained static file.
+
+2. Step 4.2: Firebase Hosting configuration
+   - firebase.json created at the project root: `{ "hosting": { "public": "public", "ignore":
+     ["firebase.json", "**/.*", "**/node_modules/**"] } }`.
+   - .firebaserc created at the project root, pinning the default project alias to
+     `tripplanner-a6078` (read from App/app/google-services.json's `project_info.project_id`
+     — the same Firebase project already used for Firestore/Auth in Phase 1, per techstack.txt's
+     decision to reuse one Firebase environment).
+   - Location decision: placed firebase.json/.firebaserc/public/ at the repository root
+     (/workspace), not inside App/, since Firebase Hosting for a single static privacy-policy
+     page is unrelated to the Android Gradle project and shouldn't live inside it.
+   - Deploy command for the manual: `firebase deploy --only hosting` (run from the repository
+     root, after `firebase login`) — requires the developer's own Firebase/Google credentials,
+     so it is not run by the agent.
+
+3. Step 4.3: Block Verification
+   - firebase.json and .firebaserc both parse as valid JSON (verified with `python3 -m json`
+     equivalent check).
+   - firebase.json's `hosting.public` ("public") correctly matches the directory containing
+     the privacy policy file.
+   - public/index.html exists (3,156 bytes).
+   - Developer ran `firebase deploy --only hosting` and confirmed the page is live at
+     https://tripplanner-a6078.web.app — verified by fetching the URL: title "TripPlanner
+     Privacy Policy", content correctly mentions Google Sign-In and Cloud Firestore, and the
+     contact email renders as tripplanner@patrikgoorts.com.
+
+Notes for Block 5:
+-------------------
+- Live privacy policy URL for Play Console's data-safety/content setup step:
+  https://tripplanner-a6078.web.app
