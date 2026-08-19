@@ -1,6 +1,8 @@
 Phase: 2
-Step: implementation - Block 4 complete
-Current: Blocks 1-4 all complete and verified (see DesignDocs/Phase2/block1-4_verification_report.txt).
-Block 4: privacy policy deployed and confirmed live at https://tripplanner-a6078.web.app
-(contact email tripplanner@patrikgoorts.com). Waiting for confirmation before starting Block 5
-(Publishing Manual) — the final block, producing DesignDocs/Phase2/publishing_manual.txt.
+Step: implementation - Block 5 written, pending developer confirmation
+Current: Blocks 1-4 complete and verified. Block 5 (Publishing Manual) written:
+DesignDocs/Phase2/publishing_manual.txt, covering Play Developer account creation through the
+day-2 update workflow, with real values filled in (upload key fingerprints, Firebase project
+tripplanner-a6078, privacy policy URL https://tripplanner-a6078.web.app). Waiting for developer
+to read through the manual and confirm it's clear/matches what they see in Play Console and
+Firebase Console (Step 5.2) — once confirmed, Phase 2's implementation plan is fully complete.

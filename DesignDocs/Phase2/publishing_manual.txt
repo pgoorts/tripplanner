@@ -1,0 +1,162 @@
+TripPlanner Publishing Manual
+==============================
+This is the developer-run manual for publishing TripPlanner to your private group of testers
+via Google Play Internal testing. Everything in this document requires your own Google/Play
+credentials, so none of it could be done automatically — follow it step by step. It covers
+both the one-time setup and the repeatable "day 2" update process (see Section 9).
+
+Reference values you'll need throughout this manual:
+- Package name (application ID): com.pgoorts.tripplanner
+- Upload keystore: App/upload-keystore.jks (alias tripplanner-upload — you were given the
+  password directly when it was generated; it is not stored anywhere in this repo or docs)
+- Upload key SHA-1:   6E:CF:8F:97:C0:17:FC:62:4D:9C:D6:75:56:C9:91:71:E9:69:FF:33
+- Upload key SHA-256: 60:0B:DF:34:60:1A:7D:BB:FD:DC:FE:D8:A5:54:07:5C:72:73:81:E0:1A:D6:31:02:B8:93:8E:EF:C3:47:F2:49
+- Firebase project: tripplanner-a6078
+- Privacy policy URL: https://tripplanner-a6078.web.app
+- Release bundle location after building: App/app/build/outputs/bundle/release/app-release.aab
+
+---
+
+1. Create a Google Play Developer Account
+==========================================
+- Go to https://play.google.com/console/signup and sign in with the Google account you want
+  to publish TripPlanner under.
+- Pay the one-time $25 USD registration fee.
+- Complete identity verification (Google may ask for a government ID and/or business
+  documents, depending on account type). This step is handled entirely by Google and can take
+  anywhere from a few hours to a few days — there's nothing to do on your end but wait once
+  submitted.
+- You cannot create an app entry or upload anything until this account is fully verified, so
+  this is a hard prerequisite for everything below.
+
+---
+
+2. Create the App Entry in Play Console
+=========================================
+- In Play Console, click "Create app".
+- App name: TripPlanner (or your preferred display name — this can be changed later).
+- Default language: English (or your preference).
+- App or game: App.
+- Free or paid: Free.
+- Confirm the declarations (US export laws, Play policies, US developer distribution
+  agreement) — read them, then accept.
+- This creates the app's dashboard, where the remaining setup happens.
+
+---
+
+3. Complete Required App Setup (Data Safety, Content Rating, Privacy Policy)
+===============================================================================
+Even for Internal testing, Play Console requires these to be filled in before any release —
+including internal — can roll out. In the app dashboard, go to "App content" (left sidebar)
+and complete each section:
+
+- Privacy policy: enter the URL https://tripplanner-a6078.web.app
+- Data safety: declare what TripPlanner collects/shares. Based on what the app actually does:
+  - Personal info collected: Name, Email address (via Google Sign-in).
+  - App activity / user content collected: the trip, event, note, and reminder content users
+    create.
+  - Data is stored and transmitted via Firebase (Google Cloud infrastructure).
+  - Data is NOT shared with third parties or used for advertising.
+  - Data is associated with the user's identity (since it's tied to their Google account).
+  - Users can request deletion by contacting tripplanner@patrikgoorts.com (as stated in the
+    privacy policy).
+- Content rating questionnaire: answer honestly for a trip-planning/productivity app with no
+  mature content — expect the lowest rating tier (e.g. "Everyone" / "PEGI 3").
+- Target audience and content / Ads / Government apps / Financial features declarations: these
+  also appear under "App content" — TripPlanner has no ads and isn't targeted at children,
+  answer accordingly.
+- App access: since Google Sign-in is required, Play may ask how reviewers can access the app.
+  Provide a note or test account if prompted (only relevant if you ever move beyond Internal
+  testing, which has no Google review requirement — but it's good to fill in regardless).
+
+---
+
+4. Build the Signed Release Bundle
+=====================================
+From the App/ directory:
+    ./gradlew bundleRelease
+This produces App/app/build/outputs/bundle/release/app-release.aab, signed with your upload
+key (App/upload-keystore.jks). The build will fail with a clear error if
+App/keystore.properties is missing — see keystore.properties.example if you need to recreate
+it (you already have the real values from when the key was generated).
+
+---
+
+5. Upload to Internal Testing & Enroll in Play App Signing
+=============================================================
+- In Play Console, go to Testing → Internal testing → Create new release.
+- The first time you upload, Play will prompt you to enroll in Play App Signing — accept this.
+  From this point on, Google holds the actual app signing key and re-signs every release you
+  upload (signed with your upload key) before distributing it. This is why losing the upload
+  key later is recoverable (Google can help you reset it) in a way that losing a traditional
+  self-managed signing key would not be.
+- Upload app-release.aab from Step 4.
+- Add release notes (can be brief, e.g. "Initial internal test release").
+- Save, then review and roll out the release to the Internal testing track.
+
+---
+
+6. Register the Play App Signing Certificate with Firebase (do this AFTER the first upload)
+================================================================================================
+This is a second, separate fingerprint registration from the one already done in Block 3 —
+required because Play now re-signs the app with its own certificate, different from your
+upload key.
+- In Play Console: Setup → App signing. Copy the "SHA-1 certificate fingerprint" listed under
+  "App signing key certificate" (not the upload key certificate).
+- In Firebase Console: Project Settings → Your Apps → the Android app (com.pgoorts.tripplanner)
+  → Add fingerprint → paste that SHA-1 (and the SHA-256 shown alongside it, if present).
+- Without this step, Google Sign-in will fail specifically for testers who install from the
+  Play Store — even though it worked for you when you side-loaded/installed the release build
+  directly in Block 3, since that used the upload key's certificate, not Play's.
+
+---
+
+7. Add Testers and Share the Opt-In Link
+============================================
+- In Play Console: Testing → Internal testing → Testers tab.
+- Create (or edit) an email list and add your known tester email addresses (under 10 people).
+- Save. Play Console will show an opt-in URL (looks like
+  https://play.google.com/apps/internaltest/...).
+- Send that link to your testers (email, chat, however you'd normally reach them).
+
+---
+
+8. What Testers Experience
+==============================
+- A tester opens the opt-in link on the device (or browser) they'll use, signed into a Google
+  account that matches an email you added in Step 7.
+- They accept becoming a tester on the page Play shows them.
+- They can then install TripPlanner from the Play Store exactly like any other app (search
+  won't find it — they need the link, or to have already opted in and can then find it via the
+  "Internal test" link again or, once installed, updates arrive automatically like normal).
+- If a tester is removed from the list later, they stop receiving updates and (depending on
+  Play's behavior at the time) may lose access to reinstall, but an already-installed copy
+  typically keeps working until they uninstall it.
+
+---
+
+9. Day 2: Shipping a Future Update
+======================================
+Repeat this whenever you have changes ready for testers:
+1. Bump the version in App/app/build.gradle.kts:
+   - Increase versionCode by exactly 1 (Play rejects an upload that doesn't strictly increase
+     this).
+   - Update versionName to whatever you want testers to see (e.g. "1.1").
+2. Rebuild: `./gradlew bundleRelease` from App/.
+3. Re-run the Block 3 smoke test on a real device/emulator with the new build: app launches,
+   Google Sign-in works, existing trip loads, create/edit of trip/event/note/reminder syncs.
+4. In Play Console: Testing → Internal testing → Create new release, upload the new
+   app-release.aab, add release notes describing what changed, review and roll out.
+5. Testers receive the update automatically through the Play Store, the same way any app
+   updates — no new opt-in link needed unless you're adding new testers.
+
+---
+
+Keeping the Upload Key Safe
+===============================
+App/upload-keystore.jks and its password are the single most important artifact from this
+phase. Store both somewhere durable and private (a password manager, encrypted backup, etc.)
+outside of this repository. As long as Play App Signing is enrolled (Step 5), losing the
+upload key is recoverable — Google support can help you reset it. Before that point, or if
+Play App Signing were never enrolled, losing it would mean no future update could ever be
+signed compatibly with an already-installed app, forcing a brand new app listing.
