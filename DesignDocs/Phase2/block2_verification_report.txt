@@ -1,0 +1,70 @@
+TripPlanner - Phase 2 - Block 2 Verification Report
+====================================================
+Block: Release Signing Key & Gradle Signing Configuration
+Date: 2026-08-19
+Status: COMPLETED SUCCESSFULLY
+
+Executed Steps:
+---------------
+1. Step 2.1: Generated the upload keystore
+   - File: App/upload-keystore.jks (NOT committed — see git-status confirmation below).
+   - Command: `keytool -genkeypair -v -keystore upload-keystore.jks -alias tripplanner-upload
+     -keyalg RSA -keysize 2048 -validity 9125 -storepass <random> -keypass <random>
+     -dname "CN=TripPlanner Upload Key, OU=TripPlanner, O=TripPlanner, L=NA, ST=NA, C=US"`.
+   - RSA 2048-bit, SHA256withRSA, alias `tripplanner-upload`, validity 9,125 days (25 years:
+     2026-08-19 to 2051-08-13).
+   - SHA1:   6E:CF:8F:97:C0:17:FC:62:4D:9C:D6:75:56:C9:91:71:E9:69:FF:33
+     SHA256: 60:0B:DF:34:60:1A:7D:BB:FD:DC:FE:D8:A5:54:07:5C:72:73:81:E0:1A:D6:31:02:B8:93:8E:EF:C3:47:F2:49
+     (These will be needed again in Block 3, Step 3.2, to register with Firebase for Google Sign-in.)
+   - Deviation from plan: `keytool`'s default keystore type is now PKCS12 (JDK 9+ default),
+     which does not support a separate key password from the store password — keytool
+     silently ignored the distinct `-keypass` value and used the store password for both.
+     `keystore.properties` reflects this: `storePassword` and `keyPassword` are the same
+     value. This is standard modern keytool/PKCS12 behavior, not a mistake.
+   - Both randomly generated passwords are 32-character base64-derived strings (using
+     URL-safe substitutions for `/` and `+` to avoid quoting issues in the `.properties`
+     file). The keystore file and its password have been handed to the developer directly
+     in this conversation (see chat) and are not stored anywhere in git.
+
+2. Step 2.2: Wired signing into Gradle
+   - App/keystore.properties created (untracked): storeFile, storePassword, keyAlias, keyPassword.
+   - App/keystore.properties.example created (committed): same keys, placeholder values.
+   - App/.gitignore updated: added `keystore.properties`, `*.jks`, `*.keystore`.
+   - App/app/build.gradle.kts updated:
+     - Loads `keystore.properties` from the root project directory (App/) via `java.util.Properties`
+       if the file exists.
+     - Adds `signingConfigs.release`, populated from the properties file when present.
+     - `buildTypes.release` now throws a `GradleException` with a clear message if
+       `keystore.properties` is missing (pointing at `keystore.properties.example` and the
+       publishing manual), instead of silently producing an unsigned release build.
+     - `buildTypes.release.signingConfig` is set to `signingConfigs.getByName("release")`.
+   - Note: `storeFile` is resolved via `rootProject.file(...)` (not the app module's `file(...)`)
+     since `keystore.properties` and `upload-keystore.jks` both live in `App/`, one level above
+     `App/app/`.
+
+3. Step 2.3: Versioning convention
+   - Documented directly above `versionCode`/`versionName` in App/app/build.gradle.kts: bump
+     `versionCode` by exactly 1 and update `versionName` for every Play Console upload
+     (Play requires a strictly increasing versionCode). Confirmed current values
+     (`versionCode = 1`, `versionName = "1.0"`) are correct as the first internal release
+     and were left unchanged.
+
+4. Step 2.4: Block Verification
+   - `./gradlew bundleRelease` succeeded: "BUILD SUCCESSFUL in 1m 8s" (50 actionable tasks:
+     8 executed, 42 up-to-date), now including `validateSigningRelease` and `signReleaseBundle`
+     tasks that did not run against the Block 1 baseline.
+   - Verified signing: `jarsigner -verify -certs app/build/outputs/bundle/release/app-release.aab`
+     reported "jar verified." (Warnings about self-signed certificate, no timestamp, and
+     JarFile/JarInputStream entry-ordering inconsistencies are expected/benign for a
+     locally self-signed AAB and do not indicate a verification failure.)
+   - `git status --short` and `git ls-files | grep -i keystore` confirm neither
+     `upload-keystore.jks` nor `keystore.properties` are tracked or staged. Only
+     `.gitignore`, `app/build.gradle.kts`, and the new `keystore.properties.example`
+     (placeholder-only) are changed/added.
+
+Notes for Block 3:
+-------------------
+- SHA-1/SHA-256 fingerprints above are ready to register with Firebase in Step 3.2.
+- Keystore custody: the developer now holds `App/upload-keystore.jks` and its password
+  (handed over directly, not persisted in any document). Losing it before Play App Signing
+  is enrolled would require a new app listing — flag this prominently in the Block 5 manual.

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +7,16 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
+}
+
+// Loaded from a local, untracked keystore.properties (see keystore.properties.example).
+// Required for release builds so a signed .aab/.apk is always what gets produced/uploaded,
+// never a silently-unsigned one.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -15,12 +27,27 @@ android {
         applicationId = "com.pgoorts.tripplanner"
         minSdk = 24
         targetSdk = 34
+        // versionCode/versionName convention: bump versionCode by exactly 1 and update
+        // versionName for every Play Console upload (internal testing included). Play
+        // requires a strictly increasing versionCode per upload. Start at 1 / "1.0" for
+        // the first internal release.
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -31,6 +58,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException(
+                    "Missing App/keystore.properties. Release builds must be signed with the " +
+                        "upload key — copy keystore.properties.example to keystore.properties " +
+                        "and fill in the real values (see DesignDocs/Phase2/publishing_manual.txt)."
+                )
+            }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

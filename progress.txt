@@ -1,3 +1,3 @@
 Phase: 2
-Step: implementation plan
-Current: techstack.txt confirmed (same Firebase instance for debug/release). Skipped datastructure.txt and designmockups (no new data model or UI in this phase). Wrote DesignDocs/Phase2/implementation_plan.txt (5 blocks: build env verification, release signing key + Gradle config, release-build correctness pass incl. Google Sign-in SHA-1 fingerprints, privacy policy + Firebase Hosting, publishing manual). Waiting for confirmation before starting Block 1.
+Step: implementation - Block 2 complete
+Current: Block 2 (Release Signing Key & Gradle Signing Configuration) done and verified — see DesignDocs/Phase2/block2_verification_report.txt. upload-keystore.jks generated and handed to developer (not committed); keystore.properties/keystore.properties.example + Gradle signingConfigs wired into App/app/build.gradle.kts; .gitignore updated. `./gradlew bundleRelease` now produces a signed app-release.aab (jarsigner verified). Waiting for confirmation before starting Block 3 (Release-Build Correctness Pass, incl. Google Sign-in SHA-1/SHA-256 fingerprint registration with Firebase).
