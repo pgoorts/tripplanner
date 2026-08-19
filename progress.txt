@@ -1,3 +1,10 @@
 Phase: 2
-Step: implementation - Block 2 complete
-Current: Block 2 (Release Signing Key & Gradle Signing Configuration) done and verified — see DesignDocs/Phase2/block2_verification_report.txt. upload-keystore.jks generated and handed to developer (not committed); keystore.properties/keystore.properties.example + Gradle signingConfigs wired into App/app/build.gradle.kts; .gitignore updated. `./gradlew bundleRelease` now produces a signed app-release.aab (jarsigner verified). Waiting for confirmation before starting Block 3 (Release-Build Correctness Pass, incl. Google Sign-in SHA-1/SHA-256 fingerprint registration with Firebase).
+Step: implementation - Block 3 in progress (developer action pending)
+Current: Block 3 (Release-Build Correctness Pass). Step 3.1 (debug-only code audit) done, no
+issues found. Step 3.2 fingerprints extracted (upload key SHA-1/SHA-256, see
+DesignDocs/Phase2/block3_verification_report.txt) but adding them to Firebase Console requires
+the developer's own Google login — cannot be done by the agent. Step 3.3 (device smoke test)
+also requires the developer. Waiting on developer to: (1) add both upload-key fingerprints to
+Firebase Console alongside the existing debug fingerprint, (2) run the release-build smoke test,
+then confirm back so Block 3 can be marked complete and Block 4 (Privacy Policy + Firebase
+Hosting) can start.

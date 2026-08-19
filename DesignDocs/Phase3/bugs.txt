@@ -1,0 +1,7 @@
+* When selecting a date for anything in a trip, the start date should be the start of the trip
+* The first letter of text fields (input) should be a capital by default
+* When adding a note, go to the editing of the note immediately instead of going back and having to edit immediately afterwards anyways
+* Time zones for begin and end date should be separate
+* Default time zone is defined by the trip
+* There seems to be no image for a trip added (Japan)
+* It must be possible to edit the dates of the trip. Events outside the date range should be labeled as invalid and invite the user to fix them

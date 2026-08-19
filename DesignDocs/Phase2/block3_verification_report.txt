@@ -1,0 +1,54 @@
+TripPlanner - Phase 2 - Block 3 Verification Report
+====================================================
+Block: Release-Build Correctness Pass
+Date: 2026-08-19
+Status: PARTIALLY COMPLETE — Steps 3.2 (Firebase Console) and 3.3 (device smoke test) require
+the developer's own credentials/device and are not yet confirmed done.
+
+Executed Steps:
+---------------
+1. Step 3.1: Codebase audit for debug-only behavior
+   - Searched App/app/src/main for BuildConfig.DEBUG, isDebug/DEBUG_MODE flags, hardcoded
+     emulator addresses (10.0.2.2), localhost references, and debug-only TODO/FIXME markers:
+     no matches.
+   - Searched for any `BuildConfig` usage at all: none — the app never branches on build type.
+   - Reviewed AndroidManifest.xml: no explicit `android:debuggable`, no
+     `android:usesCleartextTraffic`, no custom network security config — all defaults, which
+     is correct (AGP sets debuggable per build type automatically; release is non-debuggable
+     by default).
+   - Conclusion: re-confirms the plan's initial finding — no debug-only behavior exists in
+     the codebase as of this implementation. Nothing to change for this step.
+
+2. Step 3.2: Google Sign-in certificate fingerprint — EXTRACTED, Firebase Console update PENDING
+   - Upload key fingerprints (from Block 2's upload-keystore.jks, alias tripplanner-upload):
+     SHA-1:   6E:CF:8F:97:C0:17:FC:62:4D:9C:D6:75:56:C9:91:71:E9:69:FF:33
+     SHA-256: 60:0B:DF:34:60:1A:7D:BB:FD:DC:FE:D8:A5:54:07:5C:72:73:81:E0:1A:D6:31:02:B8:93:8E:EF:C3:47:F2:49
+   - For reference, the existing debug keystore fingerprint already in use during Phase 1
+     (from /root/.android/debug.keystore, alias androiddebugkey) is:
+     SHA-1:   FB:99:89:71:BD:71:83:08:40:02:1D:9E:79:DC:1F:00:C2:18:56:83
+     SHA-256: FE:62:58:47:FE:55:B1:9E:33:11:AD:CF:E0:97:83:97:AD:E7:D4:5A:98:3B:82:92:23:2A:70:74:42:B9:D3:CB
+   - This step requires signing into Firebase Console with the developer's Google account —
+     the agent has no such credentials/browser access, so it cannot be completed here.
+     Action needed from the developer (see message accompanying this report for the
+     step-by-step): open Firebase Console → Project Settings → Your Apps → the Android app
+     (com.pgoorts.tripplanner) → Add fingerprint, and add BOTH the SHA-1 and SHA-256 upload-key
+     values above, keeping the existing debug fingerprint in place (both must coexist).
+   - Reminder for later (already noted in the implementation plan, restated here so it isn't
+     lost): once the app is first uploaded to Play Console and Play App Signing is enrolled,
+     Play re-signs the app with a *different* certificate. That certificate's SHA-1 (visible in
+     Play Console → Setup → App signing) must ALSO be added to Firebase after the first upload,
+     or Google Sign-in will fail for testers installing from Play specifically. This is
+     covered as its own item in the Block 5 publishing manual.
+
+3. Step 3.3: Manual smoke test — PENDING (developer action)
+   - Not yet run. Requires building/installing the signed release artifact
+     (`./gradlew installRelease` or manual install of app/build/outputs/bundle/release/app-release.aab
+     via bundletool, or `./gradlew assembleRelease` for a directly installable APK) on a
+     physical device or emulator, signing in with a real Google account, and confirming an
+     existing trip loads and create/edit of trip/event/note/reminder syncs to Firestore.
+   - Cannot proceed until Step 3.2's Firebase fingerprint registration is done, since
+     Google Sign-in will fail on the release build otherwise.
+
+4. Step 3.4: Block Verification — PENDING
+   - Awaiting developer confirmation that Step 3.2 (Firebase fingerprints added) and Step 3.3
+     (smoke test passed on a real device with the release build) are both done.
