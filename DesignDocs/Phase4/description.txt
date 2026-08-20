@@ -1,3 +1,5 @@
+This phase will be about bug fixing. Here is a list of bugs I found (unsorted, maybe related):
+
 * When selecting a date for anything in a trip, the start date should be the start of the trip
 * The first letter of text fields (input) should be a capital by default
 * When adding a note, go to the editing of the note immediately instead of going back and having to edit immediately afterwards anyways

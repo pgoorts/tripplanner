@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Outfit', system-ui, -apple-system, sans-serif; }
+    a, a:hover { color: #1ABC9C; }
+  </style>
+</helmet>
+
+<div style="width:375px;height:812px;background:#0D1526;color:#E8EDF5;border:1px solid #162440;border-radius:10px;overflow:hidden;">
+
+  <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 4px 16px;">
+    <div style="width:8px;height:8px;border-radius:4px;background:#1ABC9C;"></div>
+    <div style="font-size:14px;font-weight:700;color:#1ABC9C;">Mon, Jun 1</div>
+    <div style="flex:1;"></div>
+    <div style="width:80px;height:1px;background:rgba(58,74,98,0.4);"></div>
+  </div>
+
+  <!-- Custom Flight card -->
+  <div style="display:flex;padding:6px 16px;">
+    <div style="width:36px;height:36px;border-radius:18px;background:rgba(41,128,185,0.15);border:1px solid rgba(41,128,185,0.4);display:flex;align-items:center;justify-content:center;color:#2980B9;flex-shrink:0;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </div>
+    <div style="width:10px;"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#111E33,#162440);border:1px solid rgba(41,128,185,0.35);border-radius:12px;padding:12px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:14px;font-weight:700;color:#FFFFFF;">Flight to Tokyo &middot; Departing</div>
+        <div style="background:rgba(41,128,185,0.2);color:#2980B9;font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px;">SN357</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2980B9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        <div style="font-size:16px;font-weight:700;color:#FFFFFF;">BRU</div>
+        <div style="font-size:11px;color:#667799;">&middot; departs 11:20</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic Lodging card -->
+  <div style="display:flex;padding:3px 16px;margin-top:6px;">
+    <div style="width:36px;height:36px;border-radius:18px;background:rgba(142,68,173,0.15);border:1px solid rgba(142,68,173,0.4);display:flex;align-items:center;justify-content:center;color:#8E44AD;flex-shrink:0;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20v-8a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v8"/><path d="M14 20v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/><path d="M2 20h20"/><circle cx="6" cy="8" r="2"/></svg>
+    </div>
+    <div style="width:10px;"></div>
+    <div style="flex:1;background:#162440;border-radius:12px;padding:10px 12px;">
+      <div style="font-size:14px;font-weight:600;color:#FFFFFF;">Shinjuku Grand Hotel</div>
+      <div style="font-size:12px;color:#667799;margin-top:3px;">All day</div>
+      <div style="margin-top:6px;background:rgba(142,68,173,0.12);display:inline-block;border-radius:20px;padding:2px 8px;font-size:11px;color:#8E44AD;">Lodging</div>
+    </div>
+  </div>
+
+  <!-- Generic Activity card -->
+  <div style="display:flex;padding:3px 16px;margin-top:4px;">
+    <div style="width:36px;height:36px;border-radius:18px;background:rgba(22,160,133,0.15);border:1px solid rgba(22,160,133,0.4);display:flex;align-items:center;justify-content:center;color:#16A085;flex-shrink:0;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M13 8l-3 3 1 6"/><path d="M10 11l-4 2"/><path d="M13 8l3 2 1 7"/><path d="M16 10l3 1"/></svg>
+    </div>
+    <div style="width:10px;"></div>
+    <div style="flex:1;background:#162440;border-radius:12px;padding:10px 12px;">
+      <div style="font-size:14px;font-weight:600;color:#FFFFFF;">Shibuya Crossing Walk</div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <div style="font-size:12px;color:#667799;">19:00</div>
+      </div>
+      <div style="margin-top:6px;background:rgba(22,160,133,0.12);display:inline-block;border-radius:20px;padding:2px 8px;font-size:11px;color:#16A085;">Activity</div>
+    </div>
+  </div>
+
+  <!-- Day header 2 -->
+  <div style="display:flex;align-items:center;gap:8px;padding:14px 16px 4px 16px;">
+    <div style="width:8px;height:8px;border-radius:4px;background:#3A4A62;"></div>
+    <div style="font-size:14px;font-weight:700;color:#ABB7CC;">Tue, Jun 2</div>
+    <div style="flex:1;"></div>
+    <div style="width:80px;height:1px;background:rgba(58,74,98,0.4);"></div>
+  </div>
+
+  <!-- Same flight, arrival day, split card -->
+  <div style="display:flex;padding:6px 16px;">
+    <div style="width:36px;height:36px;border-radius:18px;background:rgba(41,128,185,0.15);border:1px solid rgba(41,128,185,0.4);display:flex;align-items:center;justify-content:center;color:#2980B9;flex-shrink:0;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </div>
+    <div style="width:10px;"></div>
+    <div style="flex:1;background:linear-gradient(135deg,#111E33,#162440);border:1px solid rgba(41,128,185,0.35);border-radius:12px;padding:12px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:14px;font-weight:700;color:#FFFFFF;">Flight to Tokyo &middot; Arriving</div>
+        <div style="background:rgba(41,128,185,0.2);color:#2980B9;font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px;">SN357</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2980B9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        <div style="font-size:16px;font-weight:700;color:#FFFFFF;">NRT</div>
+        <div style="font-size:11px;color:#667799;">&middot; lands 06:45</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

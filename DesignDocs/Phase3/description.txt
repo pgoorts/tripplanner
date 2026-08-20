@@ -1,0 +1,19 @@
+This phase will introduce new features: 
+
+* A global settings panel, including the default time zone and server sync interval. Also move the account settings here
+
+* A settings panel per trip, including the default time zone. 
+
+* A bar at the top with sync info: how long the last successful sync was ago, and a manual sync button
+
+* Add a confirmation box before deleting something
+
+* Add a note types: pkpass. It should be possible to select a pkpass file from the file picker, and add a button to render the pass just like in google wallet (show code to scan, and all info, bump up brightness of the screen)
+
+* Adding a google doc or drive link is now with url. Also add a button to choose immediately from the docs or drive app (similar to the file picker). First check it's possible
+
+* Add info fields per event category: Flight: add flight number, departure and arrival airport code. Lodging: add booking number. Text type in is good now. Entry is optional
+
+* When adding a new event, show custom input form per type. When choosing flight, rename start date to departure date (same for times), rename end date to arrival date (same for times), add field for flight number and departure and arrival airport code. 
+
+* When showing events in the list for a trip, make some custom views. For now, show for a flight the flight number, and departure and arrival code too. When arriving on a different date, split this info (departure in one card, arrival in the other, flight number in both)

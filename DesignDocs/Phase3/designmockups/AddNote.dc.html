@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Outfit', system-ui, -apple-system, sans-serif; }
+    a, a:hover { color: #1ABC9C; }
+  </style>
+</helmet>
+
+<div style="width:375px;background:#0D1526;color:#E8EDF5;border:1px solid #162440;border-radius:10px;overflow:hidden;padding:20px 16px;display:flex;flex-direction:column;gap:16px;">
+
+  <!-- Panel 1: type dropdown open -->
+  <div>
+    <div style="font-size:12px;font-weight:600;color:#667799;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Add note &mdash; type picker open</div>
+    <div style="background:#111E33;border-radius:16px;padding:18px;">
+      <div style="font-size:18px;font-weight:700;color:#FFFFFF;margin-bottom:14px;">New Note</div>
+      <div style="border:1px solid #3A4A62;border-radius:6px;padding:12px 14px;font-size:14px;color:#667799;margin-bottom:12px;">Title</div>
+      <div style="border:1.5px solid #1ABC9C;border-radius:6px;padding:10px 14px;font-size:14px;color:#E8EDF5;display:flex;justify-content:space-between;align-items:center;">
+        Type
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+      </div>
+      <div style="background:#162440;border-radius:8px;margin-top:4px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ABB7CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 0 1 1 1v15l-3-2-3 2-3-2-3 2V5a1 1 0 0 1 1-1z"/><path d="M8 8h8M8 12h5"/></svg>
+          <div style="font-size:14px;color:#FFFFFF;">Text Block</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>
+          <div style="font-size:14px;color:#FFFFFF;">Checklist</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2980B9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 0 1 4-4h3a4 4 0 1 1 0 8h-1"/><path d="M15 12a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h1"/></svg>
+          <div style="font-size:14px;color:#FFFFFF;">Link (paste a URL)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(26,188,156,0.12);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+          <div style="font-size:14px;color:#FFFFFF;font-weight:600;">Pass (.pkpass)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 2: Pass type selected -->
+  <div>
+    <div style="font-size:12px;font-weight:600;color:#667799;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Pass type selected</div>
+    <div style="background:#111E33;border-radius:16px;padding:18px;">
+      <div style="font-size:18px;font-weight:700;color:#FFFFFF;margin-bottom:14px;">New Note</div>
+      <div style="border:1px solid #3A4A62;border-radius:6px;padding:12px 14px;font-size:14px;color:#E8EDF5;margin-bottom:12px;">AA1234 Boarding Pass</div>
+      <div style="border:1px solid #3A4A62;border-radius:6px;padding:10px 14px;font-size:14px;color:#E8EDF5;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Pass</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div style="border:1.5px dashed #3A4A62;border-radius:10px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1ABC9C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+        <div style="font-size:13px;font-weight:600;color:#1ABC9C;">Choose .pkpass file</div>
+        <div style="font-size:11px;color:#667799;">From Files, Downloads, or Wallet exports</div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:16px;margin-top:16px;">
+        <div style="font-size:13px;color:#ABB7CC;">Cancel</div>
+        <div style="font-size:13px;font-weight:700;color:#3A4A62;">Add</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 3: Link type selected -->
+  <div>
+    <div style="font-size:12px;font-weight:600;color:#667799;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;">Link type &mdash; single URL paste</div>
+    <div style="background:#111E33;border-radius:16px;padding:18px;">
+      <div style="font-size:18px;font-weight:700;color:#FFFFFF;margin-bottom:14px;">New Note</div>
+      <div style="border:1px solid #3A4A62;border-radius:6px;padding:12px 14px;font-size:14px;color:#E8EDF5;margin-bottom:12px;">Hotel Reservation</div>
+      <div style="border:1px solid #3A4A62;border-radius:6px;padding:10px 14px;font-size:14px;color:#E8EDF5;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2980B9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 0 1 4-4h3a4 4 0 1 1 0 8h-1"/><path d="M15 12a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h1"/></svg>Link</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div style="border:1.5px solid #1ABC9C;border-radius:6px;padding:12px 14px;font-size:13px;color:#E8EDF5;">https://drive.google.com/file/d/1AbCdE...</div>
+      <div style="font-size:11px;color:#667799;margin-top:6px;">Detected automatically as: Google Drive file</div>
+      <div style="display:flex;justify-content:flex-end;gap:16px;margin-top:16px;">
+        <div style="font-size:13px;color:#ABB7CC;">Cancel</div>
+        <div style="font-size:13px;font-weight:700;color:#1ABC9C;">Add</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

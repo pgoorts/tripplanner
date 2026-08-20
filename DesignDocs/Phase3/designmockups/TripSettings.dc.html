@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Outfit', system-ui, -apple-system, sans-serif; }
+    a, a:hover { color: #1ABC9C; }
+  </style>
+</helmet>
+
+<div style="width:375px;height:812px;background:#0D1526;color:#E8EDF5;border:1px solid #162440;border-radius:10px;overflow:hidden;">
+
+  <!-- Top App Bar -->
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 8px;background:#0D1526;">
+    <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#ABB7CC;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </div>
+    <div style="flex:1;font-size:20px;line-height:26px;font-weight:700;color:#FFFFFF;">Trip Settings</div>
+  </div>
+
+  <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+    <div style="font-size:12px;line-height:16px;color:#667799;letter-spacing:0.4px;">JAPAN &middot; JUN 1&ndash;10, 2026</div>
+
+    <div style="height:16px;"></div>
+
+    <div style="font-size:14px;line-height:20px;font-weight:700;color:#1ABC9C;">This trip's default timezone</div>
+    <div style="height:1px;background:#162440;margin-bottom:4px;"></div>
+
+    <div style="background:#162440;border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:rgba(26,188,156,0.15);display:flex;align-items:center;justify-content:center;color:#1ABC9C;flex-shrink:0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:#667799;">Overrides your global default for events in this trip</div>
+        <div style="font-size:15px;font-weight:600;color:#FFFFFF;margin-top:2px;">Asia/Tokyo</div>
+      </div>
+      <div style="color:#667799;display:flex;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:6px;padding:10px 2px 0 2px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+      <div style="font-size:12px;line-height:16px;color:#667799;">Falls back to your global default timezone (Settings &rarr; Preferences) when this is unset.</div>
+    </div>
+
+    <div style="padding-top:8px;">
+      <div style="display:inline-block;font-size:13px;font-weight:600;color:#1ABC9C;">Clear override</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

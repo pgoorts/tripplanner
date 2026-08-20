@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Outfit', system-ui, -apple-system, sans-serif; }
+    a, a:hover { color: #1ABC9C; }
+    .fld { border:1px solid #3A4A62; border-radius:6px; padding:10px 12px; font-size:13px; color:#E8EDF5; }
+    .lbl { font-size:10px; color:#667799; margin-bottom:4px; }
+  </style>
+</helmet>
+
+<div style="width:375px;background:#0D1526;color:#E8EDF5;border:1px solid #162440;border-radius:10px;overflow:hidden;padding:20px 16px;">
+  <div style="background:#111E33;border-radius:16px;padding:18px;">
+    <div style="font-size:18px;font-weight:700;color:#FFFFFF;margin-bottom:14px;">New Event</div>
+
+    <div class="lbl">Title</div>
+    <div class="fld" style="margin-bottom:12px;">SN357 to Tokyo Narita</div>
+
+    <div class="lbl">Category</div>
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2980B9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        Flight
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+
+    <div style="background:rgba(41,128,185,0.10);border-radius:10px;padding:12px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:#2980B9;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Flight details</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <div class="lbl">Departure date</div>
+          <div class="fld">2026-06-01</div>
+        </div>
+        <div style="flex:1;">
+          <div class="lbl">Departure time</div>
+          <div class="fld">11:20</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <div class="lbl">Arrival date</div>
+          <div class="fld">2026-06-02</div>
+        </div>
+        <div style="flex:1;">
+          <div class="lbl">Arrival time</div>
+          <div class="fld">06:45</div>
+        </div>
+      </div>
+
+      <div class="lbl">Flight number <span style="color:#3A4A62;">&middot; optional</span></div>
+      <div class="fld" style="margin-bottom:10px;">SN357</div>
+
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <div class="lbl">Departure airport <span style="color:#3A4A62;">&middot; optional</span></div>
+          <div class="fld">BRU</div>
+        </div>
+        <div style="flex:1;">
+          <div class="lbl">Arrival airport <span style="color:#3A4A62;">&middot; optional</span></div>
+          <div class="fld">NRT</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lbl">Description <span style="color:#3A4A62;">&middot; optional</span></div>
+    <div class="fld" style="color:#667799;">Confirmation code, notes...</div>
+
+    <div style="display:flex;justify-content:flex-end;gap:16px;margin-top:16px;">
+      <div style="font-size:13px;color:#ABB7CC;">Cancel</div>
+      <div style="font-size:13px;font-weight:700;color:#1ABC9C;">Add</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

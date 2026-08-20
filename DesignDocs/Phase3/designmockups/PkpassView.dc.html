@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Outfit', system-ui, -apple-system, sans-serif; }
+    a, a:hover { color: #1ABC9C; }
+  </style>
+</helmet>
+
+<div style="width:375px;height:812px;background:#0D1526;color:#E8EDF5;border:1px solid #162440;border-radius:10px;overflow:hidden;">
+
+  <!-- Top App Bar -->
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 8px;">
+    <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:#ABB7CC;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </div>
+    <div style="flex:1;font-size:18px;line-height:24px;font-weight:700;color:#FFFFFF;">AA1234 Boarding Pass</div>
+  </div>
+
+  <div style="padding:16px;">
+    <!-- Wallet pass card -->
+    <div style="background:linear-gradient(160deg,#1B3A5C,#0F2540);border-radius:20px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,0.35);">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#ABB7CC;">American Airlines</div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ABB7CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+      </div>
+      <div style="font-size:20px;font-weight:700;color:#FFFFFF;margin-top:4px;">Boarding Pass</div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;">
+        <div>
+          <div style="font-size:11px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">From</div>
+          <div style="font-size:26px;font-weight:700;color:#FFFFFF;">BRU</div>
+        </div>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ABB7CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">To</div>
+          <div style="font-size:26px;font-weight:700;color:#FFFFFF;">NRT</div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:rgba(171,183,204,0.25);margin:18px 0;"></div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Passenger</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">J. Goorts</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Flight</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">AA1234</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Seat</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">14A</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Gate</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">B12</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Boarding</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">10:40</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#ABB7CC;text-transform:uppercase;letter-spacing:0.5px;">Class</div>
+          <div style="font-size:14px;font-weight:600;color:#FFFFFF;margin-top:2px;">Economy</div>
+        </div>
+      </div>
+
+      <div style="height:1px;background:rgba(171,183,204,0.25);margin:18px 0;"></div>
+
+      <!-- Barcode -->
+      <div style="background:#FFFFFF;border-radius:12px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <rect x="0" y="0" width="150" height="150" fill="#FFFFFF"/>
+          <g fill="#0F2540">
+            <rect x="10" y="10" width="30" height="30"/><rect x="18" y="18" width="14" height="14" fill="#FFFFFF"/><rect x="22" y="22" width="6" height="6"/>
+            <rect x="110" y="10" width="30" height="30"/><rect x="118" y="18" width="14" height="14" fill="#FFFFFF"/><rect x="122" y="22" width="6" height="6"/>
+            <rect x="10" y="110" width="30" height="30"/><rect x="18" y="118" width="14" height="14" fill="#FFFFFF"/><rect x="22" y="122" width="6" height="6"/>
+            <rect x="50" y="10" width="6" height="6"/><rect x="62" y="10" width="6" height="6"/><rect x="74" y="16" width="6" height="6"/><rect x="86" y="10" width="6" height="6"/><rect x="98" y="18" width="6" height="6"/>
+            <rect x="50" y="24" width="6" height="6"/><rect x="68" y="30" width="6" height="6"/><rect x="80" y="24" width="6" height="6"/><rect x="92" y="30" width="6" height="6"/>
+            <rect x="10" y="50" width="6" height="6"/><rect x="22" y="56" width="6" height="6"/><rect x="10" y="68" width="6" height="6"/><rect x="30" y="74" width="6" height="6"/>
+            <rect x="50" y="50" width="6" height="6"/><rect x="60" y="56" width="6" height="6"/><rect x="72" y="50" width="6" height="6"/><rect x="82" y="60" width="6" height="6"/><rect x="94" y="50" width="6" height="6"/><rect x="106" y="56" width="6" height="6"/><rect x="118" y="50" width="6" height="6"/><rect x="130" y="60" width="6" height="6"/>
+            <rect x="50" y="66" width="6" height="6"/><rect x="64" y="70" width="6" height="6"/><rect x="76" y="66" width="6" height="6"/><rect x="88" y="76" width="6" height="6"/><rect x="100" y="66" width="6" height="6"/><rect x="112" y="70" width="6" height="6"/><rect x="124" y="66" width="6" height="6"/>
+            <rect x="50" y="82" width="6" height="6"/><rect x="60" y="90" width="6" height="6"/><rect x="72" y="82" width="6" height="6"/><rect x="84" y="92" width="6" height="6"/><rect x="96" y="82" width="6" height="6"/><rect x="108" y="90" width="6" height="6"/><rect x="120" y="82" width="6" height="6"/>
+            <rect x="50" y="98" width="6" height="6"/><rect x="66" y="104" width="6" height="6"/><rect x="78" y="98" width="6" height="6"/><rect x="90" y="106" width="6" height="6"/><rect x="102" y="98" width="6" height="6"/><rect x="114" y="104" width="6" height="6"/><rect x="126" y="98" width="6" height="6"/>
+            <rect x="50" y="114" width="6" height="6"/><rect x="62" y="120" width="6" height="6"/><rect x="74" y="114" width="6" height="6"/><rect x="86" y="122" width="6" height="6"/><rect x="98" y="114" width="6" height="6"/><rect x="110" y="120" width="6" height="6"/><rect x="122" y="114" width="6" height="6"/>
+            <rect x="50" y="130" width="6" height="6"/><rect x="64" y="130" width="6" height="6"/><rect x="78" y="132" width="6" height="6"/><rect x="92" y="130" width="6" height="6"/><rect x="106" y="132" width="6" height="6"/><rect x="120" y="130" width="6" height="6"/>
+          </g>
+        </svg>
+        <div style="font-size:11px;letter-spacing:2px;color:#667799;">M1GOORTS/J AA1234 BRU NRT</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#667799" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+      <div style="font-size:11px;color:#667799;">Screen brightness increased for scanning</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

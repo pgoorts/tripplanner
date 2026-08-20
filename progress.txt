@@ -1,8 +1,28 @@
-Phase: 2
-Step: implementation - Block 5 written, pending developer confirmation
-Current: Blocks 1-4 complete and verified. Block 5 (Publishing Manual) written:
-DesignDocs/Phase2/publishing_manual.txt, covering Play Developer account creation through the
-day-2 update workflow, with real values filled in (upload key fingerprints, Firebase project
-tripplanner-a6078, privacy policy URL https://tripplanner-a6078.web.app). Waiting for developer
-to read through the manual and confirm it's clear/matches what they see in Play Console and
-Firebase Console (Step 5.2) — once confirmed, Phase 2's implementation plan is fully complete.
+Phase: 3
+Step: mockup images - designmockups populated, pending developer confirmation
+Current: Phase 2 implementation plan is complete (Blocks 1-5, including publishing manual).
+Phase 3 (Settings, Sync Visibility, Richer Notes & Events): description_detail.txt, techstack.txt,
+and datastructure.txt all confirmed by developer. For the mockup step, this environment had no
+direct image-generation tool (unlike Phase 1), so used the /design skill's canvas instead: 7
+screen mockups (Global Settings, Trip Settings, Opened Trip w/ sync bar + delete-confirm dialog,
+Add Note w/ Pass type + simplified Link, Pkpass wallet rendering, Add Event for Flight, Event list
+w/ custom Flight card) built to match the real app's Material3 palette/typeface (read from
+Color.kt/Type.kt and the existing screens' Compose source). Source files + canvas.json dropped in
+DesignDocs/Phase3/designmockups/ (see its README.txt); published, exportable canvas at
+https://claude.ai/code/artifact/4d0c8789-3d9d-4137-be18-ffe875e3c4e2. Background review found and
+fixed 4 issues (off-palette colors in 3 files, a departure/arrival split-card content bug); user
+also asked to drop the "NEW" badge on the Pass note type in the mockup, done. Mockups confirmed
+by developer.
+
+Step: implementation plan - implementation_plan.txt written, pending developer confirmation
+Wrote DesignDocs/Phase3/implementation_plan.txt: 5 blocks — (1) new deps (zxing, firebase-
+storage-ktx) + additive schema/Room migration v1->v2 landed with zero behavior change first, (2)
+global Settings (merged from Profile) + per-trip settings for timezone defaults/sync interval,
+(3) sync status bar + universal delete confirmations, (4) structured Flight/Lodging event fields
++ Add Event form + Flight-only custom list card, (5) Pkpass note type (parsing, Storage
+upload/download/delete, wallet render screen, brightness boost) + simplified Docs/Drive/URL Link
+note type. Each block ends with a concrete verification step. Waiting for developer confirmation
+before starting implementation (Block 1).
+
+Note: DesignDocs/Phase4/description.txt already exists (a bug list, staged in git as a rename
+from DesignDocs/Phase3/bugs.txt) — this is future work, not touched yet.

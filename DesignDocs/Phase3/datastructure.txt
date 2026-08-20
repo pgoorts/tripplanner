@@ -1,0 +1,203 @@
+TripPlanner Phase 3 Data Structure Design: Settings, Sync Visibility, Richer Notes & Events
+===============================================================================================
+
+This document extends DesignDocs/Phase1/datastructure.txt with the schema, storage, and sync
+changes needed for Phase 3 (per description_detail.txt and techstack.txt). It only lists what
+changes or is added — the base Trip/Event/Note/Reminder/Packing Template model, the Room-is-
+source-of-truth-for-UI architecture, and the last-write-wins conflict policy from Phase 1 are
+unchanged and still apply.
+
+1. Trips Table (`trips`) — Additive Change
+------------------------------------------------
+One new, nullable, cloud-synced field:
+*   `defaultTimezone`: TEXT, Nullable (IANA Timezone ID, e.g. `"Europe/Rome"`).
+    *   *Purpose*: Per-trip default timezone (description_detail.txt §3), pre-fills the timezone
+        field when adding an Event to this trip. This is trip data, not a personal preference —
+        it's set by whoever configures the trip and is visible/shared with all collaborators —
+        so it lives on the Trip record itself (synced via Firestore), not in a local per-device
+        preference store.
+    *   *Precedence*: When creating a new Event, the timezone field pre-fills from
+        `trips.defaultTimezone` if set, otherwise from the device's global default timezone
+        preference (section 6). The user can always override it per-event.
+    *   Null means "no trip-level override" — falls through to the global default.
+
+2. Events Table (`events`) — Additive Change
+--------------------------------------------------
+Four new, nullable, cloud-synced fields (description_detail.txt §8):
+*   `flightNumber`: TEXT, Nullable — Flight category only.
+*   `departureAirportCode`: TEXT, Nullable — Flight category only.
+*   `arrivalAirportCode`: TEXT, Nullable — Flight category only.
+*   `bookingNumber`: TEXT, Nullable — Lodging category only.
+
+All four are stored directly on the `events` record (same pattern as the existing nullable
+`location`/`description` fields) rather than in a side table — they're plain scalar values,
+always 1:1 with their event, and this keeps a single read for the whole event. They stay
+`null`/unused for categories other than Flight/Lodging; no schema branching per category. Per
+description_detail.txt §9, Flight's `startDate`/`startTime`/`endDate`/`endTime` are relabeled
+"Departure"/"Arrival" and Lodging's are relabeled "Check-in"/"Check-out" — this is presentation
+only (UI labels for the same existing columns), not a schema change.
+
+3. Notes Table (`notes`) — New Type & Additive Change
+-------------------------------------------------------------
+*   `type` enum gains one new value: `PKPASS` (alongside the existing `TEXT_BLOCK`, `CHECKLIST`,
+    `WEB_URL`, `GOOGLE_DOC`, `GOOGLE_DRIVE`).
+*   `content` for a `PKPASS` note is a JSON object (parsed from the imported `.pkpass` file's
+    `pass.json` at import time — see techstack.txt §4) rather than freeform text:
+    ```json
+    {
+      "storagePath": "pkpass/{tripId}/{noteId}/original.pkpass",
+      "originalFileName": "AA1234-boardingpass.pkpass",
+      "passType": "boardingPass",
+      "organizationName": "American Airlines",
+      "description": "Boarding Pass",
+      "serialNumber": "ABC123XYZ",
+      "barcodeMessage": "M1DOE/JOHN...",
+      "barcodeFormat": "QR",
+      "fields": [
+        {"key": "seat", "label": "Seat", "value": "14A"},
+        {"key": "gate", "label": "Gate", "value": "B12"}
+      ]
+    }
+    ```
+    *   `fields` is a flattened list of the pass's primary/secondary/auxiliary/back fields as
+        extracted at import time — whatever the specific pass encodes. It, plus
+        `barcodeMessage`/`barcodeFormat`, is **everything the rendering screen needs**; it does
+        not need to touch Firebase Storage to render the pass. This keeps the Firestore document
+        small (well under the 1 MiB document limit) and means a pass syncs and becomes viewable
+        on any collaborator's device through the exact same Note sync path every other note type
+        already uses — no special-cased sync logic for the "renderable" part of a pass.
+    *   `storagePath` is a deterministic path derived from `tripId`/`noteId` (both already
+        client-generated UUIDs at note-creation time, per Phase 1's ID scheme) — it does not
+        require a round-trip to compute, so it can be written into `content` immediately at
+        import time even before the file finishes uploading.
+*   One new **local-only** column (not part of the Firestore document, same pattern as the
+    existing `syncState`/`lastSyncedAt` local sync-metadata columns):
+    *   `localAttachmentPath`: TEXT, Nullable — absolute path to the raw `.pkpass` file cached in
+        app-internal storage right after import. Used only to (re)upload the file to Firebase
+        Storage; cleared once the upload succeeds (see section 5). `null` for every note type
+        other than `PKPASS`, and for `PKPASS` notes once their upload has completed.
+
+4. Firebase Storage — New Storage Location
+---------------------------------------------------
+*   **Path convention**: `/pkpass/{tripId}/{noteId}/original.pkpass` — one object per Pkpass
+    note, holding the original imported file exactly as picked by the user.
+*   **Purpose**: Preserves the source-of-truth artifact (e.g. for a possible future "share/export
+    the original file" feature) and satisfies the requirement that the pass "syncs to the cloud."
+    It is not required for the rendering screen (see section 3) — nothing in this phase reads it
+    back down to a device other than the one that uploaded it.
+*   **Security Rules** (`storage.rules`), mirroring the collaborator/co-owner checks already used
+    in `firestore.rules` (Phase 1), via Storage Security Rules' documented ability to read
+    Firestore:
+    ```javascript
+    rules_version = '2';
+    service firebase.storage {
+      match /b/{bucket}/o {
+        function isSignedIn() {
+          return request.auth != null;
+        }
+        function getUserEmail() {
+          return request.auth.token.email;
+        }
+        function getTrip(tripId) {
+          return firestore.get(/databases/(default)/documents/trips/$(tripId)).data;
+        }
+        function hasTripAccess(tripId) {
+          return isSignedIn() && (getUserEmail() in getTrip(tripId).collaborators);
+        }
+        function isCoOwner(tripId) {
+          return isSignedIn() && (getTrip(tripId).collaborators[getUserEmail()] == 'CO_OWNER');
+        }
+
+        match /pkpass/{tripId}/{noteId}/{fileName} {
+          allow read: if hasTripAccess(tripId);
+          allow write: if isCoOwner(tripId);
+        }
+      }
+    }
+    ```
+
+5. Sync Engine Amendments
+--------------------------------
+The Phase 1 sync engine (Room ↔ Firestore, `syncState`-driven, WorkManager-scheduled) is extended
+rather than replaced:
+*   **Upload of a PKPASS note** (`syncState` = `PENDING_INSERT`/`PENDING_UPDATE`):
+    1.  If `localAttachmentPath` is non-null, upload that file to Firebase Storage at
+        `content.storagePath` (retried independently by WorkManager's normal retry/backoff if it
+        fails — a transient Storage failure does not block the Note document itself from
+        syncing, since `content` already carries everything needed to render).
+    2.  Write the Note document to Firestore (`content` including `storagePath`, whether or not
+        step 1 has completed yet — the referenced Storage object may briefly not exist yet if the
+        two happen out of order, which is fine since nothing reads it automatically).
+    3.  Once both the Storage upload and the Firestore write have succeeded, mark the note
+        `SYNCED`, clear `localAttachmentPath`, and delete the local cached file — it's no longer
+        needed once the pass has synced (rendering only ever needs `content`).
+*   **Download of a PKPASS note**: Identical to every other note type — the Note document
+    (including its already-rendering-ready `content`) downloads and overwrites/inserts the local
+    Room record. No Storage read happens on download.
+*   **Deletion of a PKPASS note** (`syncState` = `PENDING_DELETE`): After the Firestore document
+    delete succeeds, best-effort delete the Storage object at `content.storagePath`. If that
+    delete fails (e.g. offline), it's not retried — an orphaned Storage object for a deleted note
+    has no functional impact (unreadable by anyone once the Firestore doc granting rule
+    resolution is gone, since `hasTripAccess`/`isCoOwner` depend on the trip document, and the
+    note itself no longer references it), and is an acceptable trade-off at this app's scale
+    rather than building a dedicated cleanup job for it.
+*   **Firestore Security Rules**: No changes needed — the existing `notes` subcollection rules
+    (`allow write: if isCoOwner(...)`) already govern the whole document regardless of `type` or
+    the new `content` shape; the new `PKPASS` type introduces no new access pattern at the
+    Firestore layer.
+
+6. Local-Only Preferences (Not Synced)
+---------------------------------------------
+Stored in the app's existing DataStore Preferences instance (already used for session/Inner
+Circle caching), as flat per-device keys — deliberately **not** part of Firestore, since these
+are personal/device defaults rather than shared trip data (description_detail.txt §2):
+*   `defaultTimezone`: String (IANA Timezone ID) — global fallback used when a trip has no
+    `defaultTimezone` of its own (section 1).
+*   `syncIntervalMinutes`: Int — one of the offered presets (5/15/30/60); read by
+    `TripPlannerApplication` when (re-)enqueuing the periodic `SyncWorker` job.
+*   `lastSuccessfulSyncAt`: Long (epoch millis) — set by `SyncWorker` on a fully successful sync
+    pass (both upload and download phases completed without error); read by the sync status bar
+    to render "Synced N minutes ago." Distinct from the existing per-record `lastSyncedAt`
+    columns, which track individual record sync times, not a single "last full sync" moment.
+
+7. Local Room Migration (Schema Version 1 → 2)
+------------------------------------------------------
+`AppDatabase` is currently `version = 1` with no `Migration` defined (and no
+`fallbackToDestructiveMigration()` configured, so an un-migrated version bump would crash on
+existing installs). Since every change in sections 1–3 is an additive, nullable column (plus one
+new enum value, which SQLite/Room stores as plain TEXT and needs no column change at all), a
+single straightforward migration covers all of it:
+```sql
+ALTER TABLE trips  ADD COLUMN defaultTimezone TEXT;
+ALTER TABLE events ADD COLUMN flightNumber TEXT;
+ALTER TABLE events ADD COLUMN departureAirportCode TEXT;
+ALTER TABLE events ADD COLUMN arrivalAirportCode TEXT;
+ALTER TABLE events ADD COLUMN bookingNumber TEXT;
+ALTER TABLE notes  ADD COLUMN localAttachmentPath TEXT;
+```
+`AppDatabase.version` moves to `2`, and this `Migration(1, 2)` is registered on the
+`Room.databaseBuilder` in `DatabaseModule.kt` (currently missing any `Migration`/fallback
+registration at all — this phase's implementation is the first to need one, and adds it). No data
+is lost or needs backfilling; existing rows simply get `NULL` for the new columns, which is their
+correct "not set" value.
+
+8. Updated Schema Reference (Full, Post-Phase-3)
+--------------------------------------------------------
+### `trips`
+id, destination, startDate, endDate, collaborators, `defaultTimezone` (new), createdAt,
+updatedAt, syncState, lastSyncedAt
+
+### `events`
+id, tripId, title, category, location, timezone, startDate, startTime, endDate, endTime,
+description, `flightNumber` (new), `departureAirportCode` (new), `arrivalAirportCode` (new),
+`bookingNumber` (new), createdAt, updatedAt, syncState, lastSyncedAt
+
+### `notes`
+id, tripId, eventId, title, type (now includes `PKPASS`), content, `localAttachmentPath` (new,
+local-only), createdAt, updatedAt, syncState, lastSyncedAt
+
+### Firebase Storage (new)
+`/pkpass/{tripId}/{noteId}/original.pkpass` — governed by `storage.rules` (section 4).
+
+### DataStore Preferences (new keys, local-only, not synced)
+`defaultTimezone`, `syncIntervalMinutes`, `lastSuccessfulSyncAt`

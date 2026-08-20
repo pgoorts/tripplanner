@@ -1,0 +1,235 @@
+TripPlanner Phase 3 Implementation Plan: Settings, Sync Visibility, Richer Notes & Events
+=============================================================================================
+
+This document outlines the step-by-step implementation plan for Phase 3. The plan is divided
+into 5 blocks. Each block builds on the previous ones and ends with a concrete verification step.
+Each step is designed to be self-contained and descriptive enough to allow development to pause
+and resume seamlessly with only the design documents and code as context.
+
+Refer to the following files for specification details:
+- Phase description: description_detail.txt
+- Tech stack: techstack.txt
+- Database & sync design: datastructure.txt
+- Mockups: designmockups/
+
+---
+
+Block 1: Build Environment, New Dependencies & Schema Scaffolding
+======================================================================
+Goal: Land every additive, non-behavior-changing groundwork piece (new dependencies, new schema
+columns, the Room migration) before any feature UI touches them, so later blocks build on a
+known-good, already-migrating baseline.
+
+Step 1.1: Baseline build verification
+- Confirm the app still builds and installs cleanly on the current `main` (post Phase 2) before
+  any Phase 3 change lands, via `./gradlew assembleDebug` from `App/`. This establishes the
+  pre-Phase-3 baseline so any later failure is attributable to this phase's changes.
+
+Step 1.2: Add new dependencies
+- In `App/app/build.gradle.kts`, add `com.google.zxing:core:3.5.3` and
+  `com.google.firebase:firebase-storage-ktx` (version resolved via the existing
+  `firebase-bom:32.7.4`), per techstack.txt §7.
+
+Step 1.3: Additive schema changes
+- Add nullable `defaultTimezone: String?` to `TripEntity`.
+- Add nullable `flightNumber: String?`, `departureAirportCode: String?`,
+  `arrivalAirportCode: String?`, `bookingNumber: String?` to `EventEntity`.
+- Add `PKPASS` to the `NoteType` enum.
+- Add nullable, local-only `localAttachmentPath: String?` to `NoteEntity`.
+- Bump `AppDatabase.version` to `2` and register a `Migration(1, 2)` (the `ALTER TABLE ADD
+  COLUMN` statements from datastructure.txt §7) on the `Room.databaseBuilder` call in
+  `DatabaseModule.kt` — today's builder has no `Migration`/fallback registered at all, so this is
+  also the first migration path the app gets.
+- None of these fields are read or written by any UI yet in this block — this step only makes
+  the schema shape match datastructure.txt so later blocks don't also need a migration.
+
+Step 1.4: Block Verification
+- `./gradlew assembleDebug` succeeds.
+- Install over an existing Phase-2 install (schema v1 with real data) and confirm the app opens
+  without crashing or losing data — the migration ran, not a destructive fallback.
+- A fresh install also succeeds (Room creates the v2 schema directly).
+- No visible behavior change yet: the app looks and functions exactly as it did at the end of
+  Phase 2.
+
+---
+
+Block 2: Global & Per-Trip Settings (Timezone Defaults, Sync Interval)
+===========================================================================
+Goal: Give the user visible, adjustable control over default timezones and background sync
+cadence, per description_detail.txt §2–3.
+
+Step 2.1: Preferences DataStore repository
+- Add a small repository wrapping the existing DataStore Preferences instance with three new
+  keys: `defaultTimezone` (String), `syncIntervalMinutes` (Int, default 15 to match today's
+  hardcoded behavior), `lastSuccessfulSyncAt` (Long, nullable) — per datastructure.txt §6.
+  (`lastSuccessfulSyncAt` is written in Block 3; declare it here so the repository's shape is
+  settled in one place.)
+
+Step 2.2: Merge Profile into a Settings screen
+- Rename `ProfileScreen.kt`/`ProfileViewModel` usage to a "Settings" screen (title, nav label),
+  keeping its existing sections (user info card, sign out, Inner Circle, Packing List Templates)
+  unchanged.
+- Add a new "Preferences" section above Inner Circle: a default-timezone row (opens a searchable
+  picker over `ZoneId.getAvailableZoneIds()`, writes to the preferences repository) and a
+  sync-interval row (5/15/30/60 minute preset chips, matching the mockup in
+  designmockups/Main.dc.html).
+- On sync-interval change, re-enqueue the periodic `SyncWorker` job in
+  `TripPlannerApplication.kt`/wherever it's scheduled, using `ExistingPeriodicWorkPolicy.REPLACE`
+  with the new interval (replacing today's hardcoded 15-minute `PeriodicWorkRequestBuilder`).
+
+Step 2.3: Per-trip settings panel
+- Add an entry point (icon button) from `OpenedTripScreen`'s top bar to a Trip Settings screen/
+  dialog showing the trip's `defaultTimezone` (nullable): a timezone picker plus a "Clear
+  override" action, matching designmockups/TripSettings.dc.html. Writes go through the existing
+  trip update path (marks `syncState = PENDING_UPDATE` like any other trip edit).
+- Wire timezone precedence into the Add Event flow: pre-fill the timezone field from the trip's
+  `defaultTimezone` if set, else the global default from Step 2.1, else leave it to today's
+  existing default behavior if neither is set.
+
+Step 2.4: Block Verification
+- Change the global default timezone in Settings; create a trip with no override and add an
+  event — confirm the event's timezone field pre-fills with the global default.
+- Set a trip-level override; add an event to that trip — confirm it pre-fills with the trip
+  override instead. Clear the override — confirm new events fall back to the global default
+  again.
+- Change the sync interval preset and confirm (via `adb shell dumpsys jobscheduler` or WorkManager
+  logs) the periodic sync job is re-enqueued at the new interval.
+
+---
+
+Block 3: Sync Status Bar & Delete Confirmations
+====================================================
+Goal: Make cloud sync status visible and add a safety net before destructive actions, per
+description_detail.txt §4–5.
+
+Step 3.1: Track last successful sync
+- In `SyncWorker`, after a sync pass completes with both its upload and download phases
+  successful, write `lastSuccessfulSyncAt` (epoch millis) via the Step 2.1 repository.
+
+Step 3.2: Sync status bar
+- Add a persistent bar, shown at the top of `OpenedTripScreen` below the trip header (matching
+  designmockups/OpenedTrip.dc.html), reading `lastSuccessfulSyncAt` as a continuously-updating
+  relative time string (`DateUtils.getRelativeTimeSpanString`) plus a manual-sync icon button.
+- The manual-sync button enqueues a one-off `SyncWorker` run
+  (`WorkManager.enqueueUniqueWork(..., ExistingWorkPolicy.REPLACE, ...)`), shows an in-progress
+  state, and surfaces a failure (e.g. no connectivity) distinctly from a stale timestamp rather
+  than silently doing nothing.
+
+Step 3.3: Universal delete confirmation
+- Add a reusable `ConfirmDeleteDialog` composable (title/body naming what's being deleted, Cancel/
+  Delete actions, Delete styled destructively) matching designmockups/OpenedTrip.dc.html's dialog.
+- Wire it in front of every existing delete action: Trip, Event, Note, Reminder, Packing List
+  Template, Inner Circle contact, and checklist item removal — replacing today's immediate
+  deletes in `OpenedTripScreen.kt`, `ProfileScreen.kt`/Settings, and the checklist note editor.
+
+Step 3.4: Block Verification
+- Trigger a manual sync from the status bar and confirm the "Synced …" text updates to "just
+  now" on completion. Turn off connectivity, trigger manual sync again, and confirm the failure
+  is visibly communicated (not a silently stale timestamp).
+- Attempt to delete a Trip, Event, Note, Reminder, Packing List Template, and Inner Circle
+  contact: confirm each shows the confirmation dialog, Cancel leaves the item untouched, and
+  Delete removes it.
+
+---
+
+Block 4: Structured Flight & Lodging Event Fields
+======================================================
+Goal: Give Flight and Lodging events their category-specific fields and presentation, per
+description_detail.txt §8–10.
+
+Step 4.1: Category-conditional Add Event form
+- In the Add Event dialog/form, when Category = Flight: relabel Start/End date+time to Departure/
+  Arrival date+time, and add optional Flight number, Departure airport code, and Arrival airport
+  code fields.
+- When Category = Lodging: relabel Start/End date to Check-in/Check-out date, and add an optional
+  Booking number field.
+- All other categories keep today's form unchanged. Matches designmockups/AddEventFlight.dc.html
+  for the Flight case.
+
+Step 4.2: Opened Event screen fields
+- Surface and allow editing the same category-specific fields (flight number, airport codes,
+  booking number) on `OpenedEventScreen.kt` for Flight/Lodging events, alongside the existing
+  editable fields.
+
+Step 4.3: Custom Flight list card
+- In the trip's itinerary timeline (`OpenedTripScreen.kt`'s `EventCard`), give Flight events a
+  distinct card layout showing the flight number and airport code(s), matching
+  designmockups/EventListFlight.dc.html:
+  * Same-date departure/arrival: one card showing the flight number and both airport codes.
+  * Different-date departure/arrival (existing multi-day rendering, one card per spanned date):
+    the departure date's card shows only the flight number and departure airport code; the
+    arrival date's card shows only the flight number and arrival airport code.
+- Lodging and all other categories keep today's generic `EventCard` layout — no list-view change
+  for them in this phase (description_detail.txt §10).
+
+Step 4.4: Block Verification
+- Create a same-day Flight event with a flight number and both airport codes — confirm the Add
+  Event form shows Departure/Arrival labels, and the resulting list card shows the flight number
+  and both codes on its single card.
+- Create a Flight event whose departure and arrival dates differ — confirm the departure day's
+  card shows only the flight number + departure code, and the arrival day's card shows only the
+  flight number + arrival code.
+- Create a Lodging event with a booking number — confirm it's editable on the Add Event form and
+  the Opened Event screen, and that the trip's event list still shows Lodging with the existing
+  generic card (no booking number in the list card).
+
+---
+
+Block 5: Pkpass Note Type
+==============================
+Goal: Let the user import, sync, and view a `.pkpass` wallet pass as a note, and simplify Docs/
+Drive/URL note creation, per description_detail.txt §6–7 and datastructure.txt §3–5.
+
+Step 5.1: Pass parsing & Storage Security Rules
+- Implement a `.pkpass` parser: unzip via `java.util.zip.ZipInputStream`, read `pass.json`, and
+  build the `content` JSON object shape from datastructure.txt §3 (storagePath, originalFileName,
+  passType, organizationName, description, serialNumber, barcodeMessage, barcodeFormat, and the
+  flattened `fields` list) using `kotlinx.serialization.json`'s dynamic `JsonObject` parsing.
+- Add `storage.rules` (datastructure.txt §4) to the project and note in this step's output that
+  it needs deploying via the Firebase CLI (same manual deploy pattern as Phase 2's Firestore
+  rules/Hosting — the developer runs the authenticated command).
+
+Step 5.2: Add Note flow changes — Pass type
+- Add a "Pass" entry to the note-type picker (icon + label, matching
+  designmockups/AddNote.dc.html) that, when selected, shows a "Choose .pkpass file" button
+  launching the Android file picker filtered to `.pkpass`/zip-like files.
+- On file selection: copy the picked file to app-internal storage (`localAttachmentPath`), run
+  the Step 5.1 parser immediately, and populate the note's `content` and deterministic
+  `storagePath` (`pkpass/{tripId}/{noteId}/original.pkpass`) right away — before any network
+  call, per datastructure.txt §3.
+
+Step 5.3: Simplify Docs/Drive/URL note creation
+- Replace the separate `WEB_URL`/`GOOGLE_DOC`/`GOOGLE_DRIVE` entries in the note-type picker with
+  a single "Link" entry (matching designmockups/AddNote.dc.html) that shows one URL field; reuse
+  the app's existing URL-classification logic (already distinguishing these three kinds today) to
+  set the underlying `NoteType` from the pasted URL. The in-app Docs/Drive file picker button is
+  explicitly not built, per techstack.txt §5's feasibility finding.
+
+Step 5.4: Sync engine — attachment upload/download/delete
+- On `PENDING_INSERT`/`PENDING_UPDATE` of a `PKPASS` note: upload the file at
+  `localAttachmentPath` to Firebase Storage at `content.storagePath` (independently retryable),
+  write the Note document to Firestore, and once both succeed mark the note `SYNCED`, delete the
+  local cached file, and clear `localAttachmentPath` — per datastructure.txt §5.
+- On `PENDING_DELETE` of a `PKPASS` note: after the Firestore delete succeeds, best-effort delete
+  the Storage object (no retry on failure).
+- Download of a `PKPASS` note needs no special handling — it's the same Note-document sync path
+  as every other type, since `content` already carries everything needed to render.
+
+Step 5.5: Pkpass rendering screen
+- Build the wallet-style view (matching designmockups/PkpassView.dc.html): organization name,
+  pass type/description, the flattened `fields` in a grid, and a barcode rendered from
+  `content.barcodeMessage`/`barcodeFormat` via ZXing's `MultiFormatWriter` → `BitMatrix` → bitmap.
+- On entering this screen, raise the window's screen brightness
+  (`Window.attributes.screenBrightness`); restore it (`BRIGHTNESS_OVERRIDE_NONE`) on leaving.
+
+Step 5.6: Block Verification
+- Import a sample `.pkpass` file as a note; confirm it appears with the correct title and, once
+  synced, that both a Firestore note document (with populated `content`) and a Storage object at
+  the expected path exist.
+- Open the Pkpass note: confirm the barcode renders scannable, the pass's fields display
+  correctly, and screen brightness visibly increases while open and returns to normal on leaving.
+- On a second device/account signed into the same trip, confirm the same Pkpass note opens and
+  renders correctly without any manual re-import (proves `content` alone is sufficient).
+- Delete the Pkpass note and confirm both the Firestore document and the Storage object are gone.
+- Create a Link note by pasting a Google Doc URL, a Drive file URL, and a plain web URL in turn —
+  confirm each is auto-classified correctly, matching today's classification behavior.

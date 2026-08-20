@@ -1,0 +1,144 @@
+TripPlanner Phase 3 Tech Stack Proposal: Settings, Sync Visibility, Richer Notes & Events
+=============================================================================================
+
+This document proposes the libraries, services, and (for one item) a feasibility finding needed
+to implement Phase 3 per description_detail.txt. Phase 3 is mostly built on infrastructure the
+app already has (Room, Firestore, DataStore, WorkManager, Compose/Material3) — only the Pkpass
+note type requires genuinely new dependencies.
+
+1. Settings & Preferences (Global Default Timezone, Sync Interval)
+------------------------------------------------------------------------
+*   **Storage**: `androidx.datastore:datastore-preferences` — already a dependency (used today
+    for session/Inner Circle caching). No new library needed. Global default timezone and sync
+    interval are per-device/per-user preferences, not synced trip data (per
+    description_detail.txt §2), so DataStore (not Firestore/Room) is the right store.
+*   **Timezone list**: `java.time.ZoneId.getAvailableZoneIds()` (already available — the project
+    already uses desugared Java Time APIs per Phase 1). No new dependency for populating a
+    timezone picker.
+*   **Sync interval → WorkManager**: Changing the preset re-enqueues the existing periodic sync
+    job (`TripPlannerApplication.kt`, currently hardcoded to 15 minutes) with
+    `ExistingPeriodicWorkPolicy.REPLACE` and the new interval. Uses `androidx.work:work-runtime-ktx`,
+    already a dependency.
+*   **Per-trip default timezone**: Stored as a new nullable column on the existing `trips`
+    Room/Firestore record (schema detail for the Data Structure step) — no new library.
+
+2. Sync Status Bar
+------------------------
+*   **Last-synced timestamp**: The existing `SyncWorker` records a "last successful full sync"
+    timestamp (a new DataStore-backed value, separate from the per-record `lastSyncedAt` columns
+    that already exist) on successful completion.
+*   **Relative time text** ("Synced 4 minutes ago"): `android.text.format.DateUtils.getRelativeTimeSpanString`
+    — a standard Android framework API, already available, no new dependency.
+*   **Manual sync trigger**: `WorkManager.enqueueUniqueWork` (one-off, `ExistingWorkPolicy.REPLACE`)
+    running the same `SyncWorker` used by the periodic job, so manual and background sync share
+    one code path. No new dependency.
+
+3. Delete Confirmation Dialogs
+------------------------------------
+*   `androidx.compose.material3` `AlertDialog` — already a dependency, used elsewhere in the app
+    (e.g. `ProfileScreen.kt`'s existing dialogs). No new library; this is a UI pattern applied
+    consistently across all delete actions.
+
+4. Pkpass Note Type
+-------------------------
+A `.pkpass` file is a signed ZIP archive containing a `pass.json` (arbitrary key/value fields
+whose shape depends on pass style — boarding pass, coupon, event ticket, generic, store card),
+a `manifest.json` + signature, and image assets (icon, logo, strip, etc.). Rendering one does
+**not** require an Apple Wallet SDK (none exists for Android) — it requires unzipping, reading
+JSON, and drawing a barcode image, all of which map to small, well-established pieces:
+
+*   **Archive extraction**: `java.util.zip.ZipInputStream` — part of the JDK, no new dependency.
+    Used to pull `pass.json` and any embedded images out of the imported `.pkpass` file.
+*   **Pass field parsing**: `kotlinx.serialization.json` (`Json.parseToJsonElement`) — already a
+    dependency (`kotlinx-serialization-json`, used elsewhere in the app). `pass.json`'s
+    dynamic/variable field structure is walked as a generic `JsonObject` rather than a fixed
+    `@Serializable` data class, since the field set legitimately varies by pass type/issuer.
+*   **Barcode/QR rendering**: `com.google.zxing:core` (**new dependency**, proposed version
+    `3.5.3`) — the standard, actively maintained Java barcode library. A pass's `barcodes` array
+    specifies both the message string and format (QR, PDF417, Aztec, or Code128); ZXing's
+    `MultiFormatWriter` encodes any of these into a `BitMatrix` that's converted to a bitmap for
+    display. This is on-device rendering only (encoding a known string into an image) — no
+    scanning/camera capability, no external service, no play-services dependency required.
+*   **Screen brightness boost while viewing**: `Window.attributes.screenBrightness` (via the
+    hosting `Activity`'s `Window`), restored to `BRIGHTNESS_OVERRIDE_NONE` on leaving the screen.
+    Standard Android framework API, no new dependency.
+*   **Cloud storage for the pass file**: `com.google.firebase:firebase-storage-ktx` (**new
+    dependency**, version pinned via the existing `firebase-bom:32.7.4` already in
+    `build.gradle.kts`). Reuses the existing Firebase project (no new account/service, consistent
+    with the Phase 2 decision to reuse one Firebase project). The imported `.pkpass` binary
+    uploads to Firebase Storage under a path scoped to the owning trip; the Note record stores
+    the storage path/URL, and Firebase Storage Security Rules (mirroring the existing Firestore
+    rules' collaborator/co-owner checks) will be defined in the Data Structure step to gate
+    access to a trip's collaborators only.
+
+5. Google Docs / Drive / URL Notes — Feasibility Finding
+-----------------------------------------------------------------
+Per description_detail.txt §7, this was to be checked before committing to an implementation
+plan. Finding:
+
+*   Simplifying note creation to a single "paste a URL, we classify it" flow (Google Doc/Sheet
+    link vs. Drive file link vs. plain Web URL) is straightforward — it's client-side string
+    pattern matching on the pasted URL, already effectively how the app distinguishes these
+    types today. No new dependency.
+*   Picking a file **directly from the Docs/Drive app and getting back the same kind of
+    shareable link a user would paste** is **not feasible with a currently-supported Android
+    API**:
+    *   The API that used to do exactly this — the Drive Android API
+        (`com.google.android.gms.drive`), which offered a native picker returning Drive file
+        handles — was deprecated by Google and its backing services were shut down; it's
+        officially retired and not usable for new development.
+    *   The modern, supported alternative for "let the user pick a file that lives in Drive" is
+        the **Storage Access Framework** (`Intent.ACTION_OPEN_DOCUMENT`), which — because the
+        Google Drive app registers itself as a `DocumentsProvider` — can list and pick
+        Drive-backed files. However, it hands back a `content://` URI scoped to reading that
+        file's bytes/metadata through `ContentResolver`, **not** a `https://docs.google.com/...`
+        or `https://drive.google.com/...` web link. There is no documented, supported way to
+        recover the underlying Drive file's shareable URL from that URI.
+    *   Using the SAF picker would therefore change what the feature does: instead of linking to
+        a live Google Doc/Sheet/Drive file (openable later in the Docs/Sheets/Drive app, always
+        reflecting the latest version), it would mean copying a point-in-time snapshot of the
+        file's bytes into our own storage — the same pattern as the Pkpass note in section 4,
+        conceptually a different feature from what was asked for.
+*   **Conclusion**: per description_detail.txt §7's own fallback ("if it turns out not to be
+    feasible... this sub-feature is dropped and pasting a URL remains the only way"), the in-app
+    Docs/Drive picker button is dropped from the implementation plan. Only the simplified
+    single-URL-paste flow ships in this phase. No new dependency.
+
+6. Structured Event Fields (Flight, Lodging)
+--------------------------------------------------
+New optional columns on the existing `events` Room/Firestore record (flight number, departure/
+arrival airport codes, booking number) — a Data Structure step detail, not a new dependency.
+Category-specific add-event forms and the Flight list-view card are Compose UI work using
+libraries already in the project (`material3`, `material-icons-extended`).
+
+7. New Dependencies Summary
+----------------------------------
+Additions to `App/app/build.gradle.kts`:
+*   `com.google.zxing:core:3.5.3` — pass barcode rendering.
+*   `com.google.firebase:firebase-storage-ktx` (version from the existing `firebase-bom:32.7.4`)
+    — pkpass file storage.
+
+Everything else in this phase (settings persistence, sync status, delete confirmations, note-URL
+classification, structured event fields) is built on dependencies the project already has.
+
+8. Compatibility Verification
+------------------------------------
+*   **ZXing core `3.5.3`**: Pure Java, `minSdk` requirement is far below the project's `minSdk 24`
+    (ZXing core has no Android-version floor of its own beyond very old API levels); no conflict
+    with `compileSdk 34` / Kotlin `1.9.22`.
+*   **`firebase-storage-ktx`**: Published under the same `firebase-bom:32.7.4` already pinned in
+    the project, guaranteeing version alignment with the existing `firebase-auth-ktx` /
+    `firebase-firestore-ktx` dependencies — no version conflict.
+*   No changes proposed to AGP, Kotlin, Compose compiler, `compileSdk`/`minSdk`/`targetSdk`, or
+    any existing dependency version.
+
+9. Out of Scope
+---------------------
+*   Any Apple Wallet / PassKit *creation* or *signing* capability — this phase only renders
+    passes the user already has, it does not generate or sign new ones.
+*   Barcode *scanning* (camera-based reading) — only encoding/rendering a barcode image from data
+    already in the pass is needed.
+*   Any Drive API OAuth-scope work to work around the picker limitation in section 5 (e.g.
+    server-side Drive API calls to resolve a `content://` URI to a Drive file ID) — explicitly
+    ruled out there as disproportionate to the feature's value; can be revisited in a future
+    phase if this becomes a priority.

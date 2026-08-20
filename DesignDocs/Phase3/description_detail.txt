@@ -1,0 +1,168 @@
+TripPlanner Phase 3 Detailed Description: Settings, Sync Visibility, Richer Notes & Events
+============================================================================================
+
+1. Purpose and Vision
+----------------------
+Phases 1 and 2 produced a working, privately-distributable app with a fixed set of behaviors:
+a single fixed background sync interval, no visible sync status, generic free-text event
+descriptions, and note types limited to text, checklist, URL, and Google Docs/Drive links.
+
+Phase 3 makes the app more configurable and more informative day-to-day, and makes two of its
+richest content types (flight events and imported passes) first-class instead of generic
+free text. Concretely, this phase:
+*   Gives the user visible, adjustable control over app-wide and per-trip defaults (timezone,
+    sync interval), consolidated into one Settings area.
+*   Makes cloud sync status visible and gives the user a way to trigger it on demand.
+*   Adds a safety net (confirmation) before destructive delete actions.
+*   Lets the user attach a wallet-style pass (.pkpass) to a trip or event as a note, and view/
+    scan it in a wallet-like full-screen presentation.
+*   Streamlines adding Google Docs/Drive/URL notes, and (pending a feasibility check) lets the
+    user pick a Doc/Drive file directly from the Docs/Drive app instead of pasting a link.
+*   Gives Flight and Lodging events structured fields instead of relying on free-text
+    description, and reflects those fields in the add-event form and (for Flight) the trip's
+    event list.
+
+This phase does not change the core domain model's shape (Trip / Event / Note / Reminder /
+Packing List Template) — it extends it with new settings, a new Note type, and new optional
+per-category Event fields.
+
+2. Global Settings Panel
+--------------------------
+A single Settings screen, replacing/absorbing today's Profile screen (user info card, sign out,
+Inner Circle / favorite contacts, Packing List Template manager stay as they are today), with
+two new sections added:
+*   **Default timezone**: The timezone used to pre-fill the timezone field when creating a new
+    Trip, and (absent a trip-level override, see section 3) when creating a new Event. Changing
+    it does not retroactively change existing trips or events.
+*   **Sync interval**: A user-adjustable value controlling how often the app automatically
+    syncs with the cloud in the background (in addition to the manual sync button described in
+    section 4). Offered as a small set of presets (e.g. 5 / 15 / 30 / 60 minutes) rather than
+    free-form input. This replaces today's fixed, non-configurable background sync cadence.
+
+Both settings are per-user preferences (not shared/synced trip data) and take effect immediately.
+
+3. Per-Trip Settings Panel
+-----------------------------
+Each trip gets its own settings panel (accessible from the Opened Trip screen), currently
+holding one setting:
+*   **Default timezone for this trip**: Pre-fills the timezone field when creating a new Event
+    within this trip, overriding the global default timezone for that trip only. Existing
+    events are unaffected when this is changed. If unset, the trip falls back to the global
+    default timezone.
+
+This addresses the itch behind the (previously logged) bug "default time zone is defined by the
+trip" — trip-level timezone default is a first-class setting rather than inferred behavior.
+
+4. Sync Status Bar
+---------------------
+A persistent bar (shown at the top of the app, where the user is viewing trip content) that
+shows:
+*   **Last successful sync**: A relative, continuously-updating readout (e.g. "Synced 4 minutes
+    ago", "Synced just now"), reflecting the last time a full sync with the cloud completed
+    successfully.
+*   **Manual sync button**: Triggers an immediate sync (both uploading local pending changes and
+    pulling remote changes), independent of the background interval from section 2. Gives
+    feedback while in progress and updates the "last synced" readout on completion. If the sync
+    fails (e.g. no connectivity), the bar communicates that rather than silently leaving a stale
+    timestamp.
+
+5. Delete Confirmations
+---------------------------
+Every delete action in the app (deleting a Trip, Event, Note, Reminder, packing-list checklist
+item, Packing List Template, or Inner Circle contact) now shows a confirmation dialog before the
+delete is carried out, stating clearly what is about to be deleted and that it cannot be undone
+(where that's true — e.g. trip/event/note/reminder deletes are not undoable). The user must
+explicitly confirm; dismissing the dialog (tap outside, back, cancel) leaves the item untouched.
+
+6. New Note Type: Pkpass
+----------------------------
+A new Note type representing an imported Apple Wallet-style pass (.pkpass file):
+*   **Adding**: From the existing "add note" flow, the user picks a "Pass" type and selects a
+    `.pkpass` file using the Android file picker (same picker mechanism already used for
+    Drive-file notes).
+*   **Storage & Sync**: The imported pass file itself syncs to the cloud along with its note
+    metadata (title, associated trip/event), the same way other note content syncs today — any
+    collaborator on any device can open and render the same pass, not just the device that
+    imported it.
+*   **Viewing/Rendering**: Opening a Pkpass note shows a full, wallet-like presentation of the
+    pass: its barcode/QR code (scannable), and all fields embedded in the pass (e.g. passenger
+    name, seat, gate, confirmation number — whatever the specific pass encodes). While this
+    rendering view is open, screen brightness is temporarily raised to make the code easy to
+    scan, and restored to normal when the user leaves the screen.
+*   **Editing**: A Pkpass note's underlying content isn't user-editable (it's an imported,
+    signed file); the user can rename the note or delete/replace it like other notes.
+
+7. Google Docs / Drive / URL Notes
+--------------------------------------
+Adding a Google Doc, Sheet, or Drive-file note is simplified to a single flow: the user pastes
+a URL (of the doc/sheet/drive file), and the app classifies it (Google Doc/Sheet link, Google
+Drive file link, or plain Web URL) the same way it does today — no separate note types to choose
+between up front.
+
+In addition, the add-note flow should offer a button to pick a file/document directly from the
+Google Docs or Google Drive app (the same kind of "pick from an app" experience already used for
+the Pkpass file picker and file-based notes), so the user doesn't have to leave the app, find the
+share link, copy it, and paste it back in. **This requires a feasibility check first**: before
+committing to this in the implementation plan, confirm whether Android's system file/document
+picker (or a Drive-specific picker intent) can be launched from this app and can hand back a
+usable link/URI to a Docs/Sheets/Drive item. If it turns out not to be feasible (e.g. requires
+Drive API scopes/consent flows disproportionate to the benefit), this sub-feature is dropped and
+pasting a URL remains the only way to add these notes; that determination and its reasoning will
+be recorded in the tech stack step.
+
+8. Structured Fields per Event Category
+--------------------------------------------
+Two event categories gain optional, structured fields in addition to the existing free-text
+description field (which remains available and is a fine fit for the other categories —
+Restaurant, Transit, Activity, Attraction, Other — which are not changed in this phase):
+*   **Flight**: Flight number, departure airport code, arrival airport code. All optional.
+*   **Lodging**: Booking number. Optional.
+
+These are additional structured fields, not replacements for the description field — a Flight or
+Lodging event can still carry free-text notes in its description.
+
+9. Custom Add-Event Form per Category
+-------------------------------------------
+When adding a new event, the input form adapts to the selected category:
+*   **Flight**: "Start date"/"Start time" are relabeled "Departure date"/"Departure time"; "End
+    date"/"End time" are relabeled "Arrival date"/"Arrival time". Fields for flight number,
+    departure airport code, and arrival airport code are added (optional).
+*   **Lodging**: "Start date" is relabeled "Check-in date"; "End date" is relabeled "Check-out
+    date" (times keep their existing behavior). A booking number field is added (optional).
+*   **All other categories**: Unchanged from today's generic add-event form.
+
+10. Custom Event List Views
+--------------------------------
+In the trip's event list (the chronological, per-date-section timeline), Flight events get a
+custom card layout showing the flight number and departure/arrival airport codes in addition to
+the existing generic info (title, time, etc.):
+*   If a flight departs and arrives on the same date, its single card in that date's section
+    shows the flight number plus both airport codes.
+*   If a flight's departure and arrival fall on different dates (per the existing multi-day
+    event handling, where a multi-day event appears in each spanned date's section), the
+    departure date's card shows the flight number and departure airport code, and the arrival
+    date's card shows the flight number and arrival airport code.
+
+Lodging events are not given a custom list card in this phase — the booking number is visible
+and editable on the Lodging event's detail screen, and the trip's event list keeps the existing
+generic card for Lodging (and all other non-Flight categories) for now. This can be revisited in
+a later phase if useful once real usage shows whether it's needed.
+
+11. Out of Scope
+---------------------
+*   New note types beyond Pkpass (e.g. other wallet formats, boarding-pass formats outside the
+    .pkpass standard).
+*   Structured fields for categories other than Flight and Lodging.
+*   Custom event-list card layouts for categories other than Flight.
+*   Any change to sharing, export, reminders, or the offline sync engine's conflict-resolution
+    logic (last-write-wins remains as designed in Phase 1).
+*   Making the Docs/Drive in-app picker work is contingent on the feasibility check in section 7;
+    if infeasible, only the simplified URL-paste flow ships.
+
+12. Open Items Carried Into Later Steps
+--------------------------------------------
+*   Whether/what library or approach is used to parse and render `.pkpass` files, and how the
+    pass binary is stored in the cloud, is a Tech Stack decision (next step), not decided here.
+*   The feasibility of an in-app Docs/Drive file picker (section 7) is a Tech Stack decision.
+*   Exact wording/copy for the sync status bar and delete confirmation dialogs is a UI/mockup
+    detail, not decided here.

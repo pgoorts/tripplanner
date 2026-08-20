@@ -1,0 +1,12 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 375, "h": 1000, "title": "1. Global Settings" },
+    { "file": "TripSettings.dc.html", "x": 415, "y": 0, "w": 375, "h": 812, "title": "2. Trip Settings" },
+    { "file": "OpenedTrip.dc.html", "x": 830, "y": 0, "w": 375, "h": 812, "title": "3. Opened Trip — Sync Bar + Delete Confirm" },
+    { "file": "AddNote.dc.html", "x": 1245, "y": 0, "w": 375, "h": 1150, "title": "4. Add Note — Pass & Simplified Link" },
+    { "file": "PkpassView.dc.html", "x": 1660, "y": 0, "w": 375, "h": 812, "title": "5. Pkpass Rendering" },
+    { "file": "AddEventFlight.dc.html", "x": 2075, "y": 0, "w": 375, "h": 850, "title": "6. Add Event — Flight" },
+    { "file": "EventListFlight.dc.html", "x": 2490, "y": 0, "w": 375, "h": 812, "title": "7. Event List — Flight Custom Card" }
+  ],
+  "launch": { "view": "canvas" }
+}
