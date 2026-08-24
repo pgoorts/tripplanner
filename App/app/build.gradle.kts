@@ -130,6 +130,10 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
+
+    // ZXing (pkpass barcode/QR rendering)
+    implementation("com.google.zxing:core:3.5.3")
 
     // Google Identity / Credential Manager (for Google Sign-In)
     implementation("androidx.credentials:credentials:1.2.2")

@@ -30,6 +30,10 @@ data class EventEntity(
     val endDate: String,             // ISO-8601: YYYY-MM-DD
     val endTime: String? = null,     // ISO-8601: HH:MM
     val description: String? = null,
+    val flightNumber: String? = null,            // Flight category only
+    val departureAirportCode: String? = null,     // Flight category only
+    val arrivalAirportCode: String? = null,       // Flight category only
+    val bookingNumber: String? = null,            // Lodging category only
     val createdAt: Long,
     val updatedAt: Long,
     val syncState: SyncState = SyncState.PENDING_INSERT,

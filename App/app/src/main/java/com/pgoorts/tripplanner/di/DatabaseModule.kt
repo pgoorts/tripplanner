@@ -3,6 +3,7 @@ package com.pgoorts.tripplanner.di
 import android.content.Context
 import androidx.room.Room
 import com.pgoorts.tripplanner.data.local.AppDatabase
+import com.pgoorts.tripplanner.data.local.MIGRATION_1_2
 import com.pgoorts.tripplanner.data.local.dao.EventDao
 import com.pgoorts.tripplanner.data.local.dao.NoteDao
 import com.pgoorts.tripplanner.data.local.dao.PackingTemplateDao
@@ -26,7 +27,9 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "tripplanner.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides

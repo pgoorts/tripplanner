@@ -563,6 +563,7 @@ private fun noteTypeVisuals(type: NoteType): Pair<Color, ImageVector> = when (ty
     NoteType.WEB_URL      -> Pair(FlightBlue, Icons.Filled.Link)
     NoteType.GOOGLE_DOC   -> Pair(ActivityTeal, Icons.Filled.Description)
     NoteType.GOOGLE_DRIVE -> Pair(LodgingPurple, Icons.Filled.Cloud)
+    NoteType.PKPASS       -> Pair(Teal300, Icons.Filled.CreditCard)
 }
 
 private fun validateEventForm(

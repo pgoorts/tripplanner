@@ -321,6 +321,11 @@ fun OpenedNoteScreen(
                             }
                         }
                     }
+
+                    NoteType.PKPASS -> {
+                        // Wallet-style pass rendering (barcode + pass fields) lands in Phase 3 Block 5.
+                        Text("Pass rendering coming soon", color = Grey500)
+                    }
                 }
             }
         }
@@ -388,4 +393,5 @@ private fun getNoteTypeVisuals(type: NoteType): Pair<Color, ImageVector> = when 
     NoteType.WEB_URL      -> Pair(FlightBlue, Icons.Filled.Link)
     NoteType.GOOGLE_DOC   -> Pair(ActivityTeal, Icons.Filled.Description)
     NoteType.GOOGLE_DRIVE -> Pair(LodgingPurple, Icons.Filled.Cloud)
+    NoteType.PKPASS       -> Pair(Teal300, Icons.Filled.CreditCard)
 }

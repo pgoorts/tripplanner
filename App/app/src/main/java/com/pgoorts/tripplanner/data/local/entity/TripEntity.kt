@@ -11,6 +11,7 @@ data class TripEntity(
     val startDate: String,           // ISO-8601: YYYY-MM-DD
     val endDate: String,             // ISO-8601: YYYY-MM-DD
     val collaborators: String,       // JSON object: {"email": "ROLE"}
+    val defaultTimezone: String? = null, // IANA Timezone ID; per-trip override of the global default
     val createdAt: Long,
     val updatedAt: Long,
     val syncState: SyncState = SyncState.PENDING_INSERT,

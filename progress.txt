@@ -14,15 +14,33 @@ fixed 4 issues (off-palette colors in 3 files, a departure/arrival split-card co
 also asked to drop the "NEW" badge on the Pass note type in the mockup, done. Mockups confirmed
 by developer.
 
-Step: implementation plan - implementation_plan.txt written, pending developer confirmation
-Wrote DesignDocs/Phase3/implementation_plan.txt: 5 blocks — (1) new deps (zxing, firebase-
-storage-ktx) + additive schema/Room migration v1->v2 landed with zero behavior change first, (2)
-global Settings (merged from Profile) + per-trip settings for timezone defaults/sync interval,
-(3) sync status bar + universal delete confirmations, (4) structured Flight/Lodging event fields
-+ Add Event form + Flight-only custom list card, (5) Pkpass note type (parsing, Storage
-upload/download/delete, wallet render screen, brightness boost) + simplified Docs/Drive/URL Link
-note type. Each block ends with a concrete verification step. Waiting for developer confirmation
-before starting implementation (Block 1).
+Step: implementation - Block 1 done, pending developer verification (device-dependent part)
+implementation_plan.txt (5 blocks, see its contents) confirmed by developer; implementation
+started.
+
+Block 1 (Build Environment, New Deps & Schema Scaffolding) [CODE COMPLETE, pending device check]:
+- Added zxing:core:3.5.3 and firebase-storage-ktx to App/app/build.gradle.kts.
+- Added nullable defaultTimezone to TripEntity; nullable flightNumber/departureAirportCode/
+  arrivalAirportCode/bookingNumber to EventEntity; PKPASS to NoteType; nullable local-only
+  localAttachmentPath to NoteEntity.
+- Bumped AppDatabase to version 2, added MIGRATION_1_2 (ALTER TABLE ADD COLUMN for all the above)
+  in AppDatabase.kt, wired via .addMigrations() in DatabaseModule.kt (the builder previously had
+  no Migration/fallback at all).
+- Adding the PKPASS enum value broke 4 exhaustive `when(NoteType)` blocks (OpenedEventScreen.kt,
+  OpenedNoteScreen.kt x2, OpenedTripScreen.kt) — added minimal placeholder branches (a
+  Teal300/CreditCard visual, and a "Pass rendering coming soon" text in the note editor) so the
+  build compiles; Block 5 replaces these with the real pkpass UI.
+- `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
+
+
+Not yet done — needs the developer's own device/emulator (none available in this sandbox, no
+`adb devices` output, no AVDs): install this build over an existing Phase-2 install (real v1
+schema data) and confirm it opens without crashing/losing data (migration ran, not a destructive
+wipe); also confirm a fresh install works. Code-level verification (build succeeds, migration SQL
+column names match the new entity fields exactly) is done; the on-device part of Step 1.4 is
+pending developer confirmation before moving to Block 2.
+
+Note: Only build release builds unless specified otherwise
 
 Note: DesignDocs/Phase4/description.txt already exists (a bug list, staged in git as a rename
 from DesignDocs/Phase3/bugs.txt) — this is future work, not touched yet.

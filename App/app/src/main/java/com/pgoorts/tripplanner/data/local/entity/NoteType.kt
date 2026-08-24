@@ -5,5 +5,6 @@ enum class NoteType {
     CHECKLIST,
     WEB_URL,
     GOOGLE_DOC,
-    GOOGLE_DRIVE
+    GOOGLE_DRIVE,
+    PKPASS
 }
