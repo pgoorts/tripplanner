@@ -26,7 +26,7 @@ import com.pgoorts.tripplanner.ui.theme.TripPlannerTheme
 import com.pgoorts.tripplanner.ui.trip.OpenedTripScreen
 import com.pgoorts.tripplanner.ui.event.OpenedEventScreen
 import com.pgoorts.tripplanner.ui.note.OpenedNoteScreen
-import com.pgoorts.tripplanner.ui.profile.ProfileScreen
+import com.pgoorts.tripplanner.ui.settings.SettingsScreen
 import com.pgoorts.tripplanner.ui.reminder.OpenedReminderScreen
 import com.pgoorts.tripplanner.ui.signin.SignInScreen
 import dagger.hilt.android.AndroidEntryPoint
@@ -47,7 +47,7 @@ sealed class Screen(val route: String) {
     object OpenedReminder : Screen("openedReminder/{reminderId}") {
         fun createRoute(reminderId: String) = "openedReminder/$reminderId"
     }
-    object Profile : Screen("profile")
+    object Settings : Screen("settings")
 }
 
 @AndroidEntryPoint
@@ -107,8 +107,8 @@ class MainActivity : ComponentActivity() {
                             onTripClick = { tripId ->
                                 navController.navigate(Screen.OpenedTrip.createRoute(tripId))
                             },
-                            onProfileClick = {
-                                navController.navigate(Screen.Profile.route)
+                            onSettingsClick = {
+                                navController.navigate(Screen.Settings.route)
                             }
                         )
                     }
@@ -167,8 +167,8 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() }
                         )
                     }
-                    composable(Screen.Profile.route) {
-                        ProfileScreen(
+                    composable(Screen.Settings.route) {
+                        SettingsScreen(
                             googleAuthClient = googleAuthClient,
                             onBack = { navController.popBackStack() },
                             onSignOut = {

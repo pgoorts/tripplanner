@@ -1,8 +1,9 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.pgoorts.tripplanner.ui.profile
+package com.pgoorts.tripplanner.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,29 +23,35 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.pgoorts.tripplanner.auth.GoogleAuthClient
 import com.pgoorts.tripplanner.data.local.entity.PackingTemplateEntity
+import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
 import com.pgoorts.tripplanner.ui.theme.*
 import kotlinx.coroutines.launch
 
+private val SyncIntervalPresets = listOf(5, 15, 30, 60)
+
 @Composable
-fun ProfileScreen(
+fun SettingsScreen(
     googleAuthClient: GoogleAuthClient,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
-    viewModel: ProfileViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val scope = rememberCoroutineScope()
     val innerCircle by viewModel.innerCircle.collectAsState()
     val templates by viewModel.templates.collectAsState()
+    val defaultTimezone by viewModel.defaultTimezone.collectAsState()
+    val syncIntervalMinutes by viewModel.syncIntervalMinutes.collectAsState()
 
     var showAddContactDialog by remember { mutableStateOf(false) }
     var showAddTemplateDialog by remember { mutableStateOf(false) }
     var editingTemplate by remember { mutableStateOf<PackingTemplateEntity?>(null) }
+    var showTimezonePicker by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = Navy900,
         topBar = {
             TopAppBar(
-                title = { Text("Profile", fontWeight = FontWeight.Bold) },
+                title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -79,6 +86,23 @@ fun ProfileScreen(
             item {
                 Spacer(Modifier.height(12.dp))
                 UserInfoCard(viewModel)
+                Spacer(Modifier.height(20.dp))
+            }
+
+            // --- Preferences Section ---
+            item {
+                Text(
+                    "Preferences",
+                    style = MaterialTheme.typography.titleSmall.copy(color = Teal300, fontWeight = FontWeight.Bold)
+                )
+                Divider(color = Navy700, thickness = 1.dp)
+                Spacer(Modifier.height(8.dp))
+                PreferencesCard(
+                    defaultTimezone = defaultTimezone,
+                    syncIntervalMinutes = syncIntervalMinutes,
+                    onDefaultTimezoneClick = { showTimezonePicker = true },
+                    onSyncIntervalSelected = { viewModel.setSyncIntervalMinutes(it) }
+                )
                 Spacer(Modifier.height(20.dp))
             }
 
@@ -126,6 +150,17 @@ fun ProfileScreen(
         }
     }
 
+    // --- Timezone Picker Dialog ---
+    if (showTimezonePicker) {
+        TimezonePickerDialog(
+            onDismiss = { showTimezonePicker = false },
+            onSelect = { zone ->
+                viewModel.setDefaultTimezone(zone)
+                showTimezonePicker = false
+            }
+        )
+    }
+
     // --- Add Contact Dialog ---
     if (showAddContactDialog) {
         AddContactDialog(
@@ -171,7 +206,7 @@ fun ProfileScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun UserInfoCard(viewModel: ProfileViewModel) {
+private fun UserInfoCard(viewModel: SettingsViewModel) {
     val name = viewModel.userSessionManager.userDisplayName ?: "Unknown User"
     val email = viewModel.userSessionManager.userEmail ?: ""
     val photoUrl = viewModel.userSessionManager.userPhotoUrl
@@ -218,6 +253,104 @@ private fun UserInfoCard(viewModel: ProfileViewModel) {
                 Text(email, style = MaterialTheme.typography.bodySmall.copy(color = Grey300))
             }
         }
+    }
+}
+
+@Composable
+private fun PreferencesCard(
+    defaultTimezone: String?,
+    syncIntervalMinutes: Int,
+    onDefaultTimezoneClick: () -> Unit,
+    onSyncIntervalSelected: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Navy700)
+    ) {
+        Column {
+            // --- Default timezone row ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onDefaultTimezoneClick)
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PreferenceIcon(Icons.Filled.Public)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Default timezone", style = MaterialTheme.typography.bodyMedium.copy(color = Grey100, fontWeight = FontWeight.Medium))
+                    Text("Used for new trips and events", style = MaterialTheme.typography.bodySmall.copy(color = Grey500))
+                }
+                Text(
+                    text = defaultTimezone ?: "Not set",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Grey300),
+                    maxLines = 1
+                )
+                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500, modifier = Modifier.size(18.dp))
+            }
+            Divider(color = Navy900, thickness = 1.dp, modifier = Modifier.padding(start = 14.dp))
+
+            // --- Sync interval row ---
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PreferenceIcon(Icons.Filled.Sync)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sync interval", style = MaterialTheme.typography.bodyMedium.copy(color = Grey100, fontWeight = FontWeight.Medium))
+                        Text("How often the app syncs in the background", style = MaterialTheme.typography.bodySmall.copy(color = Grey500))
+                    }
+                }
+                Row(
+                    modifier = Modifier.padding(start = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SyncIntervalPresets.forEach { minutes ->
+                        SyncIntervalChip(
+                            minutes = minutes,
+                            selected = minutes == syncIntervalMinutes,
+                            onClick = { onSyncIntervalSelected(minutes) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreferenceIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Teal300.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun SyncIntervalChip(minutes: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) Teal300 else Navy900,
+        border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, Grey700)
+    ) {
+        Text(
+            text = "$minutes min",
+            style = MaterialTheme.typography.labelMedium.copy(
+                color = if (selected) Navy950 else Grey300,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            ),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+        )
     }
 }
 

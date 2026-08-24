@@ -45,7 +45,7 @@ import java.time.format.DateTimeParseException
 @Composable
 fun HomeScreen(
     onTripClick: (String) -> Unit,
-    onProfileClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -77,7 +77,7 @@ fun HomeScreen(
         ) {
             // Header
             item {
-                HomeHeader(onProfileClick = onProfileClick)
+                HomeHeader(onSettingsClick = onSettingsClick)
             }
 
             // Currently active trips
@@ -150,7 +150,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(onProfileClick: () -> Unit) {
+private fun HomeHeader(onSettingsClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -184,12 +184,12 @@ private fun HomeHeader(onProfileClick: () -> Unit) {
                 .size(38.dp)
                 .clip(CircleShape)
                 .background(Navy700)
-                .clickable { onProfileClick() },
+                .clickable { onSettingsClick() },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.Person,
-                contentDescription = "Profile",
+                contentDescription = "Settings",
                 tint = Teal300,
                 modifier = Modifier.size(22.dp)
             )

@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
+internal val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
 @Singleton
 class UserSessionManager @Inject constructor(

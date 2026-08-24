@@ -14,6 +14,7 @@ import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.data.local.entity.roleFor
 import com.pgoorts.tripplanner.data.repository.EventRepository
 import com.pgoorts.tripplanner.data.repository.NoteRepository
+import com.pgoorts.tripplanner.data.repository.PreferencesRepository
 import com.pgoorts.tripplanner.data.repository.ReminderRepository
 import com.pgoorts.tripplanner.data.repository.TripRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -56,7 +57,8 @@ class OpenedTripViewModel @Inject constructor(
     private val eventRepository: EventRepository,
     private val noteRepository: NoteRepository,
     private val reminderRepository: ReminderRepository,
-    private val userSessionManager: UserSessionManager
+    private val userSessionManager: UserSessionManager,
+    private val preferencesRepository: PreferencesRepository
 ) : ViewModel() {
 
     private val tripId: String = checkNotNull(savedStateHandle["tripId"])
@@ -87,6 +89,14 @@ class OpenedTripViewModel @Inject constructor(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyList()
+        )
+
+    /** Global fallback used to pre-fill new events' timezone when this trip has no override. */
+    val globalDefaultTimezone: StateFlow<String?> = preferencesRepository.defaultTimezone
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null
         )
 
     /**
@@ -202,6 +212,15 @@ class OpenedTripViewModel @Inject constructor(
     fun shareTrip(email: String, role: TripRole) {
         viewModelScope.launch {
             tripRepository.addCollaborator(tripId, email, role)
+        }
+    }
+
+    // --- Trip Settings ---
+    /** Sets (or, when null, clears) this trip's timezone override. */
+    fun setTripDefaultTimezone(timezone: String?) {
+        val trip = uiState.value.trip ?: return
+        viewModelScope.launch {
+            tripRepository.updateTrip(trip.copy(defaultTimezone = timezone))
         }
     }
 }

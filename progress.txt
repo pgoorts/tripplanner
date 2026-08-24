@@ -14,11 +14,11 @@ fixed 4 issues (off-palette colors in 3 files, a departure/arrival split-card co
 also asked to drop the "NEW" badge on the Pass note type in the mockup, done. Mockups confirmed
 by developer.
 
-Step: implementation - Block 1 done, pending developer verification (device-dependent part)
+Step: implementation - Block 2 code complete, pending developer device verification
 implementation_plan.txt (5 blocks, see its contents) confirmed by developer; implementation
 started.
 
-Block 1 (Build Environment, New Deps & Schema Scaffolding) [CODE COMPLETE, pending device check]:
+Block 1 (Build Environment, New Deps & Schema Scaffolding) [COMPLETE]:
 - Added zxing:core:3.5.3 and firebase-storage-ktx to App/app/build.gradle.kts.
 - Added nullable defaultTimezone to TripEntity; nullable flightNumber/departureAirportCode/
   arrivalAirportCode/bookingNumber to EventEntity; PKPASS to NoteType; nullable local-only
@@ -33,12 +33,50 @@ Block 1 (Build Environment, New Deps & Schema Scaffolding) [CODE COMPLETE, pendi
 - `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
 
 
-Not yet done — needs the developer's own device/emulator (none available in this sandbox, no
-`adb devices` output, no AVDs): install this build over an existing Phase-2 install (real v1
-schema data) and confirm it opens without crashing/losing data (migration ran, not a destructive
-wipe); also confirm a fresh install works. Code-level verification (build succeeds, migration SQL
-column names match the new entity fields exactly) is done; the on-device part of Step 1.4 is
-pending developer confirmation before moving to Block 2.
+Developer confirmed on-device: installed over an existing Phase-2 install, no crash/data loss
+(migration ran), and confirmed no visible behavior change apart from the expected placeholder
+Pkpass note type. Step 1.4 fully verified. Block 1 complete.
+
+Block 2 (Global & Per-Trip Settings: Timezone Defaults, Sync Interval) [CODE COMPLETE, pending
+device check]:
+- Added `PreferencesRepository` (data/repository/PreferencesRepository.kt) wrapping the existing
+  `user_prefs` DataStore with `defaultTimezone` (String?), `syncIntervalMinutes` (Int, default 15),
+  `lastSuccessfulSyncAt` (Long?, written starting Block 3) — per datastructure.txt §6. Made
+  `UserSessionManager`'s `Context.dataStore` extension `internal` (was `private`) so this new
+  repository can share the same DataStore instance/file instead of opening a second, conflicting
+  one.
+- Added `SyncScheduler` (sync/SyncScheduler.kt) wrapping the periodic `SyncWorker` WorkManager
+  enqueue (`schedulePeriodic(intervalMinutes, policy)`, default policy KEEP). `TripPlannerApplication`
+  now reads the persisted interval (via Hilt-injected `PreferencesRepository`) on startup and
+  schedules with KEEP (preserves an already-running schedule across app restarts, replacing the old
+  hardcoded 15-minute request); Settings calls it with `REPLACE` on an explicit user change.
+- Renamed the Profile screen/viewmodel to Settings: `ui/profile/{ProfileScreen,ProfileViewModel}.kt`
+  deleted, replaced by `ui/settings/{SettingsScreen,SettingsViewModel}.kt` (same Inner Circle /
+  Packing Template sections, unchanged), plus a new "Preferences" section (Default timezone row
+  opening a search picker; Sync interval as 5/15/30/60-minute chips) matching designmockups/Main.dc.html.
+  `MainActivity`'s `Screen.Profile` route -> `Screen.Settings` ("settings"); `HomeScreen`'s
+  `onProfileClick` -> `onSettingsClick` (same Person-icon avatar entry point, just relabeled).
+- Added a reusable `TimezonePickerDialog` (ui/components/TimezonePickerDialog.kt) — a modal,
+  search-filtered list over `ZoneId.getAvailableZoneIds()` — used by both the Settings screen and
+  the new per-trip settings dialog below.
+- Added a Trip Settings entry point (gear icon in `OpenedTripScreen`'s top bar) opening
+  `TripSettingsDialog`, matching designmockups/TripSettings.dc.html: shows the trip's
+  `defaultTimezone` override (or "Using global default: X" / "Not set"), a tap-to-open
+  `TimezonePickerDialog`, and a "Clear override" action. Writes go through
+  `OpenedTripViewModel.setTripDefaultTimezone()` -> `TripRepository.updateTrip()` (existing
+  PENDING_UPDATE path).
+- Wired timezone precedence into the Add Event form: `OpenedTripViewModel` exposes
+  `globalDefaultTimezone` (from `PreferencesRepository`); `OpenedTripScreen` resolves
+  `trip.defaultTimezone ?: globalDefaultTimezone ?: "UTC"` and passes it as `AddEventDialog`'s
+  initial timezone. `AddEventDialog` gained a Timezone field (tap to open the same
+  `TimezonePickerDialog`) — previously the dialog had no timezone field at all and events were
+  silently created with the "UTC" repository default.
+- `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
+
+Not yet done — needs the developer's own device: verify precedence end-to-end (global default ->
+event pre-fill; trip override -> event pre-fill; clear override -> falls back to global again),
+and confirm changing the sync-interval preset re-enqueues the periodic job at the new interval
+(e.g. via `adb shell dumpsys jobscheduler` or WorkManager logs), per Step 2.4.
 
 Note: Only build release builds unless specified otherwise
 

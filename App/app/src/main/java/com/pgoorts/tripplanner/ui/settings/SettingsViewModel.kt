@@ -1,10 +1,13 @@
-package com.pgoorts.tripplanner.ui.profile
+package com.pgoorts.tripplanner.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingPeriodicWorkPolicy
 import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.entity.PackingTemplateEntity
 import com.pgoorts.tripplanner.data.repository.PackingTemplateRepository
+import com.pgoorts.tripplanner.data.repository.PreferencesRepository
+import com.pgoorts.tripplanner.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,12 +23,36 @@ import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class ProfileViewModel @Inject constructor(
+class SettingsViewModel @Inject constructor(
     val userSessionManager: UserSessionManager,
-    private val packingTemplateRepository: PackingTemplateRepository
+    private val packingTemplateRepository: PackingTemplateRepository,
+    private val preferencesRepository: PreferencesRepository,
+    private val syncScheduler: SyncScheduler
 ) : ViewModel() {
 
     private val jsonCodec = Json { ignoreUnknownKeys = true }
+
+    // --- Preferences ---
+    val defaultTimezone: StateFlow<String?> = preferencesRepository.defaultTimezone
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val syncIntervalMinutes: StateFlow<Int> = preferencesRepository.syncIntervalMinutes
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            PreferencesRepository.DEFAULT_SYNC_INTERVAL_MINUTES
+        )
+
+    fun setDefaultTimezone(timezone: String) {
+        viewModelScope.launch { preferencesRepository.setDefaultTimezone(timezone) }
+    }
+
+    fun setSyncIntervalMinutes(minutes: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setSyncIntervalMinutes(minutes)
+            syncScheduler.schedulePeriodic(minutes, ExistingPeriodicWorkPolicy.REPLACE)
+        }
+    }
 
     // --- Inner Circle ---
     val innerCircle: StateFlow<List<String>> = userSessionManager.observeInnerCircle()
