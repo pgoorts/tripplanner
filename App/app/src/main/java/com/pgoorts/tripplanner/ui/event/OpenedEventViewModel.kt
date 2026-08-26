@@ -87,7 +87,11 @@ class OpenedEventViewModel @Inject constructor(
         startTime: String?,
         endDate: String,
         endTime: String?,
-        description: String?
+        description: String?,
+        flightNumber: String?,
+        departureAirportCode: String?,
+        arrivalAirportCode: String?,
+        bookingNumber: String?
     ) {
         val currentEvent = uiState.value.event ?: return
         viewModelScope.launch {
@@ -101,7 +105,11 @@ class OpenedEventViewModel @Inject constructor(
                     startTime = startTime,
                     endDate = endDate,
                     endTime = endTime,
-                    description = description
+                    description = description,
+                    flightNumber = flightNumber,
+                    departureAirportCode = departureAirportCode,
+                    arrivalAirportCode = arrivalAirportCode,
+                    bookingNumber = bookingNumber
                 )
             )
         }

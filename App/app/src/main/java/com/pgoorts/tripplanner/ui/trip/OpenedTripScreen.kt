@@ -3,6 +3,7 @@
 package com.pgoorts.tripplanner.ui.trip
 
 import android.content.Intent
+import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -39,10 +40,12 @@ import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
 import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -63,6 +66,8 @@ fun OpenedTripScreen(
     val uiState by viewModel.uiState.collectAsState()
     val innerCircle by viewModel.innerCircle.collectAsState()
     val globalDefaultTimezone by viewModel.globalDefaultTimezone.collectAsState()
+    val lastSuccessfulSyncAt by viewModel.lastSuccessfulSyncAt.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -129,6 +134,11 @@ fun OpenedTripScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            SyncStatusBar(
+                lastSuccessfulSyncAt = lastSuccessfulSyncAt,
+                status = syncStatus,
+                onSyncClick = { viewModel.triggerManualSync() }
+            )
             TripTabRow(selectedTab = selectedTab, onTabSelected = { selectedTab = it })
 
             when (selectedTab) {
@@ -158,12 +168,17 @@ fun OpenedTripScreen(
         AddEventDialog(
             initialTimezone = uiState.trip?.defaultTimezone ?: globalDefaultTimezone ?: "UTC",
             onDismiss = { showAddEventDialog = false },
-            onConfirm = { title, category, startDate, endDate, startTime, endTime, timezone ->
+            onConfirm = { title, category, startDate, endDate, startTime, endTime, timezone,
+                          flightNumber, departureAirportCode, arrivalAirportCode, bookingNumber ->
                 viewModel.createEvent(
                     title = title, category = category,
                     startDate = startDate, endDate = endDate,
                     startTime = startTime, endTime = endTime,
-                    timezone = timezone
+                    timezone = timezone,
+                    flightNumber = flightNumber,
+                    departureAirportCode = departureAirportCode,
+                    arrivalAirportCode = arrivalAirportCode,
+                    bookingNumber = bookingNumber
                 )
                 showAddEventDialog = false
             }
@@ -294,6 +309,74 @@ private fun TripTopBar(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Sync status bar
+// ──────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SyncStatusBar(
+    lastSuccessfulSyncAt: Long?,
+    status: SyncBarStatus,
+    onSyncClick: () -> Unit
+) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = System.currentTimeMillis()
+        }
+    }
+
+    val isFailed = status == SyncBarStatus.FAILED
+    val statusText = when (status) {
+        SyncBarStatus.IN_PROGRESS -> "Syncing…"
+        SyncBarStatus.FAILED -> "Sync failed — check your connection"
+        SyncBarStatus.IDLE -> formatLastSyncText(lastSuccessfulSyncAt, now)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Navy800)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            Icons.Filled.Sync,
+            contentDescription = null,
+            tint = if (isFailed) ErrorRed else Teal300,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isFailed) ErrorRed else Grey300,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(
+            onClick = onSyncClick,
+            enabled = status != SyncBarStatus.IN_PROGRESS,
+            modifier = Modifier.size(26.dp)
+        ) {
+            Icon(
+                Icons.Filled.Sync,
+                contentDescription = "Sync now",
+                tint = Teal300,
+                modifier = Modifier.size(15.dp)
+            )
+        }
+    }
+}
+
+private fun formatLastSyncText(epochMillis: Long?, now: Long): String {
+    if (epochMillis == null) return "Not synced yet"
+    val delta = now - epochMillis
+    if (delta < DateUtils.MINUTE_IN_MILLIS) return "Synced just now"
+    val relative = DateUtils.getRelativeTimeSpanString(epochMillis, now, DateUtils.MINUTE_IN_MILLIS)
+    return "Synced $relative"
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Tab row
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -348,6 +431,8 @@ private fun ItineraryTab(
     onDeleteEvent: (EventEntity) -> Unit,
     canEdit: Boolean
 ) {
+    var pendingDelete by remember { mutableStateOf<EventEntity?>(null) }
+
     if (itineraryDays.isEmpty() || itineraryDays.all { it.events.isEmpty() }) {
         EmptyTabState(icon = Icons.Filled.CalendarMonth, message = "No events yet", hint = "Tap + to add your first itinerary event")
         return
@@ -375,12 +460,21 @@ private fun ItineraryTab(
                     EventCard(
                         itineraryEvent = itEvent,
                         onClick = { onEventClick(itEvent.event.id) },
-                        onDelete = { onDeleteEvent(itEvent.event) },
+                        onDelete = { pendingDelete = itEvent.event },
                         canEdit = canEdit
                     )
                 }
             }
         }
+    }
+
+    pendingDelete?.let { event ->
+        ConfirmDeleteDialog(
+            title = "Delete event?",
+            message = "\"${event.title}\" will be permanently removed from this trip. This can't be undone.",
+            onConfirm = { onDeleteEvent(event); pendingDelete = null },
+            onDismiss = { pendingDelete = null }
+        )
     }
 }
 
@@ -465,6 +559,13 @@ private fun EventCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val isFlight = event.category == EventCategory.FLIGHT
+                val flightBadge = if (isFlight) {
+                    if (itineraryEvent.isFirstDay && !itineraryEvent.isLastDay) "Departing"
+                    else if (itineraryEvent.isLastDay && !itineraryEvent.isFirstDay) "Arriving"
+                    else null
+                } else null
+
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -476,7 +577,7 @@ private fun EventCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        itineraryEvent.multiDayLabel?.let { label ->
+                        (flightBadge ?: itineraryEvent.multiDayLabel)?.let { label ->
                             Spacer(Modifier.width(6.dp))
                             Surface(shape = RoundedCornerShape(20.dp), color = categoryColor.copy(alpha = 0.18f)) {
                                 Text(
@@ -500,6 +601,32 @@ private fun EventCard(
                         }
                     } else {
                         Text(text = "All day", style = MaterialTheme.typography.bodySmall, color = Grey500)
+                    }
+
+                    val flightInfo = if (isFlight) {
+                        val number = event.flightNumber
+                        when {
+                            itineraryEvent.isFirstDay && !itineraryEvent.isLastDay ->
+                                listOfNotNull(number, event.departureAirportCode).takeIf { it.isNotEmpty() }
+                                    ?.joinToString(" · ")
+                            itineraryEvent.isLastDay && !itineraryEvent.isFirstDay ->
+                                listOfNotNull(number, event.arrivalAirportCode).takeIf { it.isNotEmpty() }
+                                    ?.joinToString(" · ")
+                            else -> {
+                                val codes = listOfNotNull(event.departureAirportCode, event.arrivalAirportCode)
+                                    .takeIf { it.isNotEmpty() }?.joinToString(" → ")
+                                listOfNotNull(number, codes).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                            }
+                        }
+                    } else null
+
+                    if (!flightInfo.isNullOrBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Flight, contentDescription = null, tint = Grey500, modifier = Modifier.size(11.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(text = flightInfo, style = MaterialTheme.typography.bodySmall, color = Grey500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
 
                     if (!event.location.isNullOrBlank()) {
@@ -543,6 +670,8 @@ private fun NotesTab(
     onDeleteNote: (NoteEntity) -> Unit,
     canEdit: Boolean
 ) {
+    var pendingDelete by remember { mutableStateOf<NoteEntity?>(null) }
+
     if (notes.isEmpty()) {
         EmptyTabState(icon = Icons.Filled.Note, message = "No notes yet", hint = "Tap + to add a note for this trip")
         return
@@ -553,8 +682,17 @@ private fun NotesTab(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(notes, key = { it.id }) { note ->
-            NoteCard(note = note, onClick = { onNoteClick(note.id) }, onDelete = { onDeleteNote(note) }, canEdit = canEdit)
+            NoteCard(note = note, onClick = { onNoteClick(note.id) }, onDelete = { pendingDelete = note }, canEdit = canEdit)
         }
+    }
+
+    pendingDelete?.let { note ->
+        ConfirmDeleteDialog(
+            title = "Delete note?",
+            message = "\"${note.title}\" will be permanently removed from this trip. This can't be undone.",
+            onConfirm = { onDeleteNote(note); pendingDelete = null },
+            onDismiss = { pendingDelete = null }
+        )
     }
 }
 
@@ -619,6 +757,8 @@ private fun RemindersTab(
     onDeleteReminder: (ReminderEntity) -> Unit,
     canEdit: Boolean
 ) {
+    var pendingDelete by remember { mutableStateOf<ReminderEntity?>(null) }
+
     if (reminders.isEmpty()) {
         EmptyTabState(icon = Icons.Filled.Notifications, message = "No reminders yet", hint = "Tap + to set a reminder for this trip")
         return
@@ -629,8 +769,17 @@ private fun RemindersTab(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(reminders, key = { it.id }) { reminder ->
-            ReminderCard(reminder = reminder, onClick = { onReminderClick(reminder.id) }, onDelete = { onDeleteReminder(reminder) }, canEdit = canEdit)
+            ReminderCard(reminder = reminder, onClick = { onReminderClick(reminder.id) }, onDelete = { pendingDelete = reminder }, canEdit = canEdit)
         }
+    }
+
+    pendingDelete?.let { reminder ->
+        ConfirmDeleteDialog(
+            title = "Delete reminder?",
+            message = "\"${reminder.text}\" will be permanently removed from this trip. This can't be undone.",
+            onConfirm = { onDeleteReminder(reminder); pendingDelete = null },
+            onDismiss = { pendingDelete = null }
+        )
     }
 }
 
@@ -724,7 +873,7 @@ private fun EmptyTabState(icon: ImageVector, message: String, hint: String) {
 private fun AddEventDialog(
     initialTimezone: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, EventCategory, String, String, String?, String?, String) -> Unit
+    onConfirm: (String, EventCategory, String, String, String?, String?, String, String?, String?, String?, String?) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(EventCategory.OTHER) }
@@ -736,6 +885,10 @@ private fun AddEventDialog(
     var categoryExpanded by remember { mutableStateOf(false) }
     var showTimezonePicker by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var flightNumber by remember { mutableStateOf("") }
+    var departureAirportCode by remember { mutableStateOf("") }
+    var arrivalAirportCode by remember { mutableStateOf("") }
+    var bookingNumber by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -771,13 +924,22 @@ private fun AddEventDialog(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DatePickerField(label = "Start Date", value = startDate, onValueChange = { startDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
-                    DatePickerField(label = "End Date", value = endDate, onValueChange = { endDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                val dateLabels = when (category) {
+                    EventCategory.FLIGHT -> "Departure Date" to "Arrival Date"
+                    EventCategory.LODGING -> "Check-in Date" to "Check-out Date"
+                    else -> "Start Date" to "End Date"
+                }
+                val timeLabels = when (category) {
+                    EventCategory.FLIGHT -> "Departure Time" to "Arrival Time"
+                    else -> "Start Time" to "End Time"
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TimePickerField(label = "Start Time", value = startTime, onValueChange = { startTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
-                    TimePickerField(label = "End Time", value = endTime, onValueChange = { endTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    DatePickerField(label = dateLabels.first, value = startDate, onValueChange = { startDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    DatePickerField(label = dateLabels.second, value = endDate, onValueChange = { endDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimePickerField(label = timeLabels.first, value = startTime, onValueChange = { startTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    TimePickerField(label = timeLabels.second, value = endTime, onValueChange = { endTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
 
                 OutlinedTextField(
@@ -794,6 +956,17 @@ private fun AddEventDialog(
                         .clickable { showTimezonePicker = true }
                 )
 
+                if (category == EventCategory.FLIGHT) {
+                    Text("Flight details", style = MaterialTheme.typography.labelMedium, color = Grey500)
+                    TripTextField(value = flightNumber, onValueChange = { flightNumber = it }, label = "Flight number · optional")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TripTextField(value = departureAirportCode, onValueChange = { departureAirportCode = it }, label = "Departure airport · optional", modifier = Modifier.weight(1f))
+                        TripTextField(value = arrivalAirportCode, onValueChange = { arrivalAirportCode = it }, label = "Arrival airport · optional", modifier = Modifier.weight(1f))
+                    }
+                } else if (category == EventCategory.LODGING) {
+                    TripTextField(value = bookingNumber, onValueChange = { bookingNumber = it }, label = "Booking number · optional")
+                }
+
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
             }
         },
@@ -807,7 +980,11 @@ private fun AddEventDialog(
                         startDate.trim(), endDate.trim(),
                         startTime.trim().takeIf { it.isNotBlank() },
                         endTime.trim().takeIf { it.isNotBlank() },
-                        timezone.trim()
+                        timezone.trim(),
+                        flightNumber.trim().takeIf { it.isNotBlank() },
+                        departureAirportCode.trim().takeIf { it.isNotBlank() },
+                        arrivalAirportCode.trim().takeIf { it.isNotBlank() },
+                        bookingNumber.trim().takeIf { it.isNotBlank() }
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Teal300, contentColor = Navy950)

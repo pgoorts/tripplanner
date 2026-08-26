@@ -33,6 +33,7 @@ import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
@@ -63,10 +64,16 @@ fun OpenedEventScreen(
     var startTime by remember { mutableStateOf("") }
     var endTime by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var flightNumber by remember { mutableStateOf("") }
+    var departureAirportCode by remember { mutableStateOf("") }
+    var arrivalAirportCode by remember { mutableStateOf("") }
+    var bookingNumber by remember { mutableStateOf("") }
 
     // Dialog states
     var showAddNoteDialog by remember { mutableStateOf(false) }
     var showAddReminderDialog by remember { mutableStateOf(false) }
+    var pendingDeleteNote by remember { mutableStateOf<NoteEntity?>(null) }
+    var pendingDeleteReminder by remember { mutableStateOf<ReminderEntity?>(null) }
 
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var isTimezoneExpanded by remember { mutableStateOf(false) }
@@ -95,6 +102,10 @@ fun OpenedEventScreen(
             startTime = event.startTime ?: ""
             endTime = event.endTime ?: ""
             description = event.description ?: ""
+            flightNumber = event.flightNumber ?: ""
+            departureAirportCode = event.departureAirportCode ?: ""
+            arrivalAirportCode = event.arrivalAirportCode ?: ""
+            bookingNumber = event.bookingNumber ?: ""
         }
     }
 
@@ -124,7 +135,11 @@ fun OpenedEventScreen(
                                     startTime = startTime.trim().takeIf { it.isNotBlank() },
                                     endDate = endDate.trim(),
                                     endTime = endTime.trim().takeIf { it.isNotBlank() },
-                                    description = description.trim().takeIf { it.isNotBlank() }
+                                    description = description.trim().takeIf { it.isNotBlank() },
+                                    flightNumber = flightNumber.trim().takeIf { it.isNotBlank() },
+                                    departureAirportCode = departureAirportCode.trim().takeIf { it.isNotBlank() },
+                                    arrivalAirportCode = arrivalAirportCode.trim().takeIf { it.isNotBlank() },
+                                    bookingNumber = bookingNumber.trim().takeIf { it.isNotBlank() }
                                 )
                                 Toast.makeText(context, "Saved changes", Toast.LENGTH_SHORT).show()
                                 onBack()
@@ -347,6 +362,48 @@ fun OpenedEventScreen(
                             minLines = 3,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        if (category == EventCategory.FLIGHT) {
+                            OutlinedTextField(
+                                value = flightNumber,
+                                onValueChange = { flightNumber = it },
+                                label = { Text("Flight number", color = Grey500) },
+                                singleLine = true,
+                                enabled = canEdit,
+                                colors = tripTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = departureAirportCode,
+                                    onValueChange = { departureAirportCode = it },
+                                    label = { Text("Departure airport", color = Grey500) },
+                                    singleLine = true,
+                                    enabled = canEdit,
+                                    colors = tripTextFieldColors(),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = arrivalAirportCode,
+                                    onValueChange = { arrivalAirportCode = it },
+                                    label = { Text("Arrival airport", color = Grey500) },
+                                    singleLine = true,
+                                    enabled = canEdit,
+                                    colors = tripTextFieldColors(),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        } else if (category == EventCategory.LODGING) {
+                            OutlinedTextField(
+                                value = bookingNumber,
+                                onValueChange = { bookingNumber = it },
+                                label = { Text("Booking number", color = Grey500) },
+                                singleLine = true,
+                                enabled = canEdit,
+                                colors = tripTextFieldColors(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 
@@ -379,7 +436,7 @@ fun OpenedEventScreen(
                     }
                 } else {
                     items(uiState.notes, key = { it.id }) { note ->
-                        NoteRowItem(note = note, onClick = { onNoteClick(note.id) }, onDelete = { viewModel.deleteNote(note) }, canEdit = canEdit)
+                        NoteRowItem(note = note, onClick = { onNoteClick(note.id) }, onDelete = { pendingDeleteNote = note }, canEdit = canEdit)
                     }
                 }
 
@@ -415,7 +472,7 @@ fun OpenedEventScreen(
                         ReminderRowItem(
                             reminder = reminder,
                             onClick = { onReminderClick(reminder.id) },
-                            onDelete = { viewModel.deleteReminder(reminder) },
+                            onDelete = { pendingDeleteReminder = reminder },
                             canEdit = canEdit
                         )
                     }
@@ -441,6 +498,24 @@ fun OpenedEventScreen(
                 viewModel.addReminder(text, date, time)
                 showAddReminderDialog = false
             }
+        )
+    }
+
+    pendingDeleteNote?.let { note ->
+        ConfirmDeleteDialog(
+            title = "Delete note?",
+            message = "\"${note.title}\" will be permanently removed from this trip. This can't be undone.",
+            onConfirm = { viewModel.deleteNote(note); pendingDeleteNote = null },
+            onDismiss = { pendingDeleteNote = null }
+        )
+    }
+
+    pendingDeleteReminder?.let { reminder ->
+        ConfirmDeleteDialog(
+            title = "Delete reminder?",
+            message = "\"${reminder.text}\" will be permanently removed from this trip. This can't be undone.",
+            onConfirm = { viewModel.deleteReminder(reminder); pendingDeleteReminder = null },
+            onDismiss = { pendingDeleteReminder = null }
         )
     }
 }

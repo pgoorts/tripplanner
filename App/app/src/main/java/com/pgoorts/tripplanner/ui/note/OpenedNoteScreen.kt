@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.theme.*
 
 @Composable
@@ -45,6 +46,7 @@ fun OpenedNoteScreen(
     var textContent by remember { mutableStateOf("") }
     var newChecklistItemText by remember { mutableStateOf("") }
     var showTemplateDialog by remember { mutableStateOf(false) }
+    var pendingDeleteItemIndex by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(uiState.note) {
         uiState.note?.let { note ->
@@ -234,7 +236,7 @@ fun OpenedNoteScreen(
                                                     .padding(start = 8.dp)
                                             )
                                             if (canEdit) {
-                                                IconButton(onClick = { viewModel.removeChecklistItem(index) }) {
+                                                IconButton(onClick = { pendingDeleteItemIndex = index }) {
                                                     Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Grey700, modifier = Modifier.size(18.dp))
                                                 }
                                             }
@@ -373,6 +375,16 @@ fun OpenedNoteScreen(
                     Text("Cancel", color = Grey300)
                 }
             }
+        )
+    }
+
+    pendingDeleteItemIndex?.let { index ->
+        val itemText = uiState.checklistItems.getOrNull(index)?.text.orEmpty()
+        ConfirmDeleteDialog(
+            title = "Delete item?",
+            message = "\"$itemText\" will be removed from this checklist.",
+            onConfirm = { viewModel.removeChecklistItem(index); pendingDeleteItemIndex = null },
+            onDismiss = { pendingDeleteItemIndex = null }
         )
     }
 }

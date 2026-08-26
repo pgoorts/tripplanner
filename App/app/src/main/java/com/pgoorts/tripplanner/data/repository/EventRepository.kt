@@ -29,7 +29,11 @@ class EventRepository @Inject constructor(
         endTime: String? = null,
         location: String? = null,
         timezone: String = "UTC",
-        description: String? = null
+        description: String? = null,
+        flightNumber: String? = null,
+        departureAirportCode: String? = null,
+        arrivalAirportCode: String? = null,
+        bookingNumber: String? = null
     ): EventEntity {
         val now = System.currentTimeMillis()
         val event = EventEntity(
@@ -44,6 +48,10 @@ class EventRepository @Inject constructor(
             endDate = endDate,
             endTime = endTime,
             description = description,
+            flightNumber = flightNumber,
+            departureAirportCode = departureAirportCode,
+            arrivalAirportCode = arrivalAirportCode,
+            bookingNumber = bookingNumber,
             createdAt = now,
             updatedAt = now,
             syncState = SyncState.PENDING_INSERT

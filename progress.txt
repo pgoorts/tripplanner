@@ -14,7 +14,7 @@ fixed 4 issues (off-palette colors in 3 files, a departure/arrival split-card co
 also asked to drop the "NEW" badge on the Pass note type in the mockup, done. Mockups confirmed
 by developer.
 
-Step: implementation - Block 2 code complete, pending developer device verification
+Step: implementation - Block 3 code complete, pending developer device verification
 implementation_plan.txt (5 blocks, see its contents) confirmed by developer; implementation
 started.
 
@@ -37,8 +37,7 @@ Developer confirmed on-device: installed over an existing Phase-2 install, no cr
 (migration ran), and confirmed no visible behavior change apart from the expected placeholder
 Pkpass note type. Step 1.4 fully verified. Block 1 complete.
 
-Block 2 (Global & Per-Trip Settings: Timezone Defaults, Sync Interval) [CODE COMPLETE, pending
-device check]:
+Block 2 (Global & Per-Trip Settings: Timezone Defaults, Sync Interval) [COMPLETE]:
 - Added `PreferencesRepository` (data/repository/PreferencesRepository.kt) wrapping the existing
   `user_prefs` DataStore with `defaultTimezone` (String?), `syncIntervalMinutes` (Int, default 15),
   `lastSuccessfulSyncAt` (Long?, written starting Block 3) — per datastructure.txt §6. Made
@@ -73,10 +72,110 @@ device check]:
   silently created with the "UTC" repository default.
 - `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
 
-Not yet done — needs the developer's own device: verify precedence end-to-end (global default ->
-event pre-fill; trip override -> event pre-fill; clear override -> falls back to global again),
-and confirm changing the sync-interval preset re-enqueues the periodic job at the new interval
-(e.g. via `adb shell dumpsys jobscheduler` or WorkManager logs), per Step 2.4.
+Developer confirmed on-device (Step 2.4): timezone precedence pre-fill (global default -> event;
+trip override -> event; clear override -> falls back to global) and the sync-interval preset
+change re-enqueueing the periodic job at the new interval. Block 2 complete.
+
+Block 3 (Sync Status Bar & Delete Confirmations) [CODE COMPLETE, pending device check]:
+- `SyncWorker` now resolves `PreferencesRepository` via its Hilt entry point and, after both the
+  upload and download phases complete without error, writes `lastSuccessfulSyncAt` (epoch millis)
+  — covers both the periodic job and the new manual one-off run below.
+- `SyncScheduler` gained `isNetworkAvailable()` (ConnectivityManager/NetworkCapabilities check),
+  `triggerManualSync()` (one-off `SyncWorker` run via `enqueueUniqueWork("TripPlannerManualSync",
+  REPLACE, ...)`, same `NetworkType.CONNECTED` constraint as the periodic job), and
+  `observeManualSyncWorkInfo()` (Flow of that unique work's latest `WorkInfo`). Added
+  `ACCESS_NETWORK_STATE` permission to the manifest for the connectivity check.
+- `OpenedTripViewModel` exposes `lastSuccessfulSyncAt` (StateFlow, from the preferences
+  repository) and `syncStatus` (StateFlow<SyncBarStatus> — IDLE/IN_PROGRESS/FAILED), plus
+  `triggerManualSync()`. Design choice: rather than relying on `SyncWorker`'s `Result.retry()`
+  path to ever reach a terminal `WorkInfo.FAILED` state (it won't — WorkManager just keeps
+  retrying with backoff), "no connectivity" is checked up front via
+  `syncScheduler.isNetworkAvailable()` before even enqueuing manual-sync work; a positive result
+  shows FAILED for 3s then reverts to IDLE. WorkInfo RUNNING/ENQUEUED maps to IN_PROGRESS,
+  SUCCEEDED maps back to IDLE (the bar's relative-time text updates automatically off the new
+  `lastSuccessfulSyncAt` write).
+- `OpenedTripScreen.kt` gained a `SyncStatusBar` (below the trip header, above the tab row, per
+  designmockups/OpenedTrip.dc.html): relative-time text via `DateUtils.getRelativeTimeSpanString`
+  (special-cased to "Synced just now" under 1 minute, "Not synced yet" if never synced), refreshed
+  every 60s via a `LaunchedEffect` ticker, plus a manual-sync icon button (disabled while
+  IN_PROGRESS) wired to `viewModel.triggerManualSync()`.
+- Added a reusable `ConfirmDeleteDialog` (ui/components/ConfirmDeleteDialog.kt) matching
+  designmockups/OpenedTrip.dc.html's dialog (title/message, Cancel + destructive-red Delete).
+  Wired in front of every existing delete action, replacing each immediate delete with
+  `pendingDelete*` local state that opens the dialog first:
+  * `OpenedTripScreen.kt`: Event/Note/Reminder deletes in the Itinerary/Notes/Reminders tabs.
+  * `OpenedEventScreen.kt`: Note/Reminder deletes on the event's linked-items lists (same delete
+    actions, different screen — not explicitly named in implementation_plan.txt's file list but
+    covered for "every existing delete action" per the block's stated goal).
+  * `HomeScreen.kt`: Trip delete (both Large and Small trip cards).
+  * `SettingsScreen.kt`: Inner Circle contact removal, Packing List Template delete.
+  * `OpenedNoteScreen.kt`: checklist item removal (index-based, matching the existing
+    `removeChecklistItem(index)` API).
+- `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
+
+Two bugs found and fixed during Step 3.4 device verification:
+- Sync bar showed "syncing"/"failed" on plain app/trip open, unrelated to any sync actually in
+  progress. Root cause: `OpenedTripViewModel` observed WorkManager's *persisted* state for the
+  unique work name `"TripPlannerManualSync"` (`SyncScheduler.observeManualSyncWorkInfo()`), which
+  reflects whatever that work name's *last* run (possibly from a prior app session — e.g. a
+  previously failed sync, or one left ENQUEUED waiting on connectivity) ended up as. Any new
+  screen subscribing to it immediately replayed that stale state. Fixed by having
+  `SyncScheduler.triggerManualSync()` return the freshly-built `OneTimeWorkRequest`'s own ID, and
+  observing `getWorkInfoByIdFlow(id)` (new `observeSyncWorkInfo(id)`) scoped to that specific
+  request instead — the bar now only reflects a sync genuinely happening right now, defaulting to
+  IDLE with no eager subscription in `init`.
+- Manual sync failed with Firestore `PERMISSION_DENIED` on the trips download query. Root cause:
+  `SyncWorker.performDownloadFlow()` built the collaborator-membership query as a dotted string —
+  `.whereNotEqualTo("collaborators.$currentUserEmail", null)` — and since email addresses contain
+  `.`, Firestore parsed it as nested field segments (`collaborators` → `patrikgoorts@gmail` →
+  `com`) instead of the single map key `collaborators["patrikgoorts@gmail.com"]` the security
+  rules and upload path actually use. Fixed with
+  `FieldPath.of("collaborators", currentUserEmail)`, which treats the email as one literal key.
+- Also deployed `firestore.rules` (already existed in the repo root, unrelated to this bug — it
+  had just never been pushed) via `firebase deploy --only firestore:rules` after the developer
+  created the Cloud Firestore database in the console (Database ID `(default)`, since
+  `FirebaseFirestore.getInstance()` is called with no explicit database name anywhere in the
+  code); added a `firestore` section to `firebase.json` pointing at it so the CLI picks it up.
+  Verified live via the deploy log ("released rules ... to cloud.firestore") and by reading the
+  `trips` collection directly with a developer-supplied service-account key (used once for this
+  check, then deleted).
+Step 3.4 fully verified after these fixes: manual sync now succeeds and round-trips real data to
+Firestore (confirmed a trip document with the correct `collaborators` map), and all delete
+confirmations tested per the block's checklist. Block 3 complete.
+
+Block 4 (Structured Flight & Lodging Event Fields) [CODE COMPLETE, pending device check]:
+- `AddEventDialog` (OpenedTripScreen.kt) is now category-conditional: Flight relabels
+  Start/End Date+Time to Departure/Arrival Date+Time and adds optional Flight number, Departure
+  airport code, Arrival airport code fields; Lodging relabels Start/End Date to Check-in/Check-out
+  Date and adds an optional Booking number field. All other categories unchanged. Threaded through
+  `OpenedTripViewModel.createEvent()` -> `EventRepository.createEvent()` -> `EventEntity`
+  (all four fields already existed on the entity/schema from Block 1, just unused until now).
+- `OpenedEventScreen.kt`'s edit form gained the same four fields, shown/editable when the event's
+  category is Flight/Lodging respectively, alongside the existing fields; threaded through
+  `OpenedEventViewModel.updateEvent()` the same way as every other editable field.
+- `SyncWorker.kt`'s event upload map and download parsing (both the new-local-row and
+  newer-remote-wins-conflict paths) now carry `flightNumber`/`departureAirportCode`/
+  `arrivalAirportCode`/`bookingNumber` — previously these Block-1 schema columns were never
+  actually written to or read from Firestore, so they'd have been silently dropped on every sync.
+- Itinerary tab: `ItineraryEvent` (OpenedTripViewModel.kt) gained `isFirstDay`/`isLastDay` booleans
+  (computed in `buildItinerary` from each day slot vs. the event's start/end date; always true/true
+  for single-day events) so `EventCard` can tell which side of a multi-day span a given day-card is
+  on. `EventCard` (OpenedTripScreen.kt) now gives Flight events a distinct badge ("Departing"/
+  "Arriving" instead of "Day X of Y") and an extra flight-info line: same-day shows
+  "<number> · <dep> → <arr>", the departure-day card shows only "<number> · <dep>", the arrival-day
+  card shows only "<number> · <arr>" — each part omitted if not set, per description_detail.txt §10
+  (fields are optional). Lodging and all other categories keep the existing generic card (no
+  booking number shown in the list, matching Step 4.3's explicit scope).
+- `./gradlew assembleRelease` succeeds from a clean baseline through all these changes.
+
+Developer confirmed on-device, all four Step 4.4 checklist items: same-day Flight event card
+(single card, flight number + both airport codes), split-day Flight event cards (departure-day
+card shows number + departure code only, arrival-day card shows number + arrival code only),
+Lodging booking number (editable on Add Event + Opened Event, list card stays generic with no
+booking number shown), and the sync round-trip (flight/lodging fields survive edit + sync +
+re-view on a second device/fresh install). Block 4 complete.
+
+Next: Block 5 (Pkpass Note Type) — starting implementation.
 
 Note: Only build release builds unless specified otherwise
 

@@ -11,6 +11,7 @@ import com.pgoorts.tripplanner.data.local.dao.NoteDao
 import com.pgoorts.tripplanner.data.local.dao.ReminderDao
 import com.pgoorts.tripplanner.data.local.dao.PackingTemplateDao
 import com.pgoorts.tripplanner.data.local.entity.*
+import com.pgoorts.tripplanner.data.repository.PreferencesRepository
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -24,6 +25,11 @@ class SyncWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
+    companion object {
+        /** Input data key: true for the manual "Sync now" run, absent/false for the periodic job. */
+        const val KEY_IS_MANUAL = "is_manual_sync"
+    }
+
     @dagger.hilt.EntryPoint
     @InstallIn(SingletonComponent::class)
     interface SyncWorkerEntryPoint {
@@ -33,6 +39,7 @@ class SyncWorker(
         fun reminderDao(): ReminderDao
         fun packingTemplateDao(): PackingTemplateDao
         fun userSessionManager(): UserSessionManager
+        fun preferencesRepository(): PreferencesRepository
     }
 
     override suspend fun doWork(): Result {
@@ -47,6 +54,7 @@ class SyncWorker(
         val reminderDao = entryPoint.reminderDao()
         val packingTemplateDao = entryPoint.packingTemplateDao()
         val userSessionManager = entryPoint.userSessionManager()
+        val preferencesRepository = entryPoint.preferencesRepository()
 
         val currentUserEmail = userSessionManager.userEmail ?: return Result.success()
         val db = FirebaseFirestore.getInstance()
@@ -58,10 +66,15 @@ class SyncWorker(
             // 2. Download Flow (Cloud -> Local) & Conflict Resolution
             performDownloadFlow(db, currentUserEmail, tripDao, eventDao, noteDao, reminderDao, packingTemplateDao)
 
+            // Both phases completed without error — this is a full successful sync pass.
+            preferencesRepository.setLastSuccessfulSyncAt(System.currentTimeMillis())
+
             return Result.success()
         } catch (e: Exception) {
             e.printStackTrace()
-            return Result.retry()
+            // The periodic job retries silently in the background; the manual "Sync now" run is
+            // user-visible and waiting on this attempt, so it fails fast instead of looping.
+            return if (inputData.getBoolean(KEY_IS_MANUAL, false)) Result.failure() else Result.retry()
         }
     }
 
@@ -118,6 +131,10 @@ class SyncWorker(
                         "endDate" to event.endDate,
                         "endTime" to event.endTime,
                         "description" to event.description,
+                        "flightNumber" to event.flightNumber,
+                        "departureAirportCode" to event.departureAirportCode,
+                        "arrivalAirportCode" to event.arrivalAirportCode,
+                        "bookingNumber" to event.bookingNumber,
                         "createdAt" to event.createdAt,
                         "updatedAt" to event.updatedAt
                     )
@@ -234,8 +251,13 @@ class SyncWorker(
         packingTemplateDao: PackingTemplateDao
     ) {
         // 1. Fetch remote trips for this user
+        // FieldPath.of(...) is required here (rather than a dotted string) so an email containing
+        // "." is treated as one literal map key, not parsed into nested field segments.
         val remoteTripsSnapshot = db.collection("trips")
-            .whereNotEqualTo("collaborators.$currentUserEmail", null)
+            .whereNotEqualTo(
+                com.google.firebase.firestore.FieldPath.of("collaborators", currentUserEmail),
+                null
+            )
             .get()
             .await()
 
@@ -390,6 +412,10 @@ class SyncWorker(
             val remoteEndDate = eventDoc.getString("endDate") ?: ""
             val remoteEndTime = eventDoc.getString("endTime")
             val remoteDescription = eventDoc.getString("description")
+            val remoteFlightNumber = eventDoc.getString("flightNumber")
+            val remoteDepartureAirportCode = eventDoc.getString("departureAirportCode")
+            val remoteArrivalAirportCode = eventDoc.getString("arrivalAirportCode")
+            val remoteBookingNumber = eventDoc.getString("bookingNumber")
             val remoteCreatedAt = eventDoc.getLong("createdAt") ?: 0L
             val remoteUpdatedAt = eventDoc.getLong("updatedAt") ?: 0L
 
@@ -408,6 +434,10 @@ class SyncWorker(
                     endDate = remoteEndDate,
                     endTime = remoteEndTime,
                     description = remoteDescription,
+                    flightNumber = remoteFlightNumber,
+                    departureAirportCode = remoteDepartureAirportCode,
+                    arrivalAirportCode = remoteArrivalAirportCode,
+                    bookingNumber = remoteBookingNumber,
                     createdAt = remoteCreatedAt,
                     updatedAt = remoteUpdatedAt,
                     syncState = SyncState.SYNCED,
@@ -426,6 +456,10 @@ class SyncWorker(
                         endDate = remoteEndDate,
                         endTime = remoteEndTime,
                         description = remoteDescription,
+                        flightNumber = remoteFlightNumber,
+                        departureAirportCode = remoteDepartureAirportCode,
+                        arrivalAirportCode = remoteArrivalAirportCode,
+                        bookingNumber = remoteBookingNumber,
                         createdAt = remoteCreatedAt,
                         updatedAt = remoteUpdatedAt,
                         syncState = SyncState.SYNCED,

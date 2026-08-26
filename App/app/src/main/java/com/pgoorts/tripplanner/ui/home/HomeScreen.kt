@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
@@ -50,6 +51,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var pendingDeleteTrip by remember { mutableStateOf<TripEntity?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -89,7 +91,7 @@ fun HomeScreen(
                     LargeTripCard(
                         trip = trip,
                         onClick = { onTripClick(trip.id) },
-                        onDelete = { viewModel.deleteTrip(trip) }
+                        onDelete = { pendingDeleteTrip = trip }
                     )
                     Spacer(Modifier.height(12.dp))
                 }
@@ -104,7 +106,7 @@ fun HomeScreen(
                     LargeTripCard(
                         trip = trip,
                         onClick = { onTripClick(trip.id) },
-                        onDelete = { viewModel.deleteTrip(trip) }
+                        onDelete = { pendingDeleteTrip = trip }
                     )
                     Spacer(Modifier.height(12.dp))
                 }
@@ -119,7 +121,7 @@ fun HomeScreen(
                     SmallTripCard(
                         trip = trip,
                         onClick = { onTripClick(trip.id) },
-                        onDelete = { viewModel.deleteTrip(trip) }
+                        onDelete = { pendingDeleteTrip = trip }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -145,6 +147,15 @@ fun HomeScreen(
                 viewModel.createTrip(destination, startDate, endDate)
                 showAddDialog = false
             }
+        )
+    }
+
+    pendingDeleteTrip?.let { trip ->
+        ConfirmDeleteDialog(
+            title = "Delete trip?",
+            message = "\"${trip.destination}\" and everything in it will be permanently removed. This can't be undone.",
+            onConfirm = { viewModel.deleteTrip(trip); pendingDeleteTrip = null },
+            onDismiss = { pendingDeleteTrip = null }
         )
     }
 }

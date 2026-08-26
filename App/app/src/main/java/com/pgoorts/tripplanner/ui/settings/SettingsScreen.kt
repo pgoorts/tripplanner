@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.pgoorts.tripplanner.auth.GoogleAuthClient
 import com.pgoorts.tripplanner.data.local.entity.PackingTemplateEntity
+import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
 import com.pgoorts.tripplanner.ui.theme.*
 import kotlinx.coroutines.launch
@@ -46,6 +47,8 @@ fun SettingsScreen(
     var showAddTemplateDialog by remember { mutableStateOf(false) }
     var editingTemplate by remember { mutableStateOf<PackingTemplateEntity?>(null) }
     var showTimezonePicker by remember { mutableStateOf(false) }
+    var pendingDeleteContact by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteTemplate by remember { mutableStateOf<PackingTemplateEntity?>(null) }
 
     Scaffold(
         containerColor = Navy900,
@@ -118,10 +121,7 @@ fun SettingsScreen(
                 }
             } else {
                 items(innerCircle, key = { it }) { email ->
-                    ContactRow(email = email, onDelete = {
-                        val updated = innerCircle.toMutableList().also { it.remove(email) }
-                        viewModel.saveInnerCircle(updated)
-                    })
+                    ContactRow(email = email, onDelete = { pendingDeleteContact = email })
                 }
                 item { Spacer(Modifier.height(12.dp)) }
             }
@@ -142,7 +142,7 @@ fun SettingsScreen(
                         template = template,
                         items = viewModel.decodeItems(template.items),
                         onEdit = { editingTemplate = template },
-                        onDelete = { viewModel.deleteTemplate(template) }
+                        onDelete = { pendingDeleteTemplate = template }
                     )
                 }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -197,6 +197,28 @@ fun SettingsScreen(
                 viewModel.updateTemplate(tmpl, title, items)
                 editingTemplate = null
             }
+        )
+    }
+
+    // --- Delete confirmations ---
+    pendingDeleteContact?.let { email ->
+        ConfirmDeleteDialog(
+            title = "Remove contact?",
+            message = "\"$email\" will be removed from your Inner Circle.",
+            onConfirm = {
+                val updated = innerCircle.toMutableList().also { it.remove(email) }
+                viewModel.saveInnerCircle(updated)
+                pendingDeleteContact = null
+            },
+            onDismiss = { pendingDeleteContact = null }
+        )
+    }
+    pendingDeleteTemplate?.let { template ->
+        ConfirmDeleteDialog(
+            title = "Delete template?",
+            message = "\"${template.title}\" will be permanently deleted. This can't be undone.",
+            onConfirm = { viewModel.deleteTemplate(template); pendingDeleteTemplate = null },
+            onDismiss = { pendingDeleteTemplate = null }
         )
     }
 }

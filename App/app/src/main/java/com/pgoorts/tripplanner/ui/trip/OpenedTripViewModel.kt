@@ -17,14 +17,22 @@ import com.pgoorts.tripplanner.data.repository.NoteRepository
 import com.pgoorts.tripplanner.data.repository.PreferencesRepository
 import com.pgoorts.tripplanner.data.repository.ReminderRepository
 import com.pgoorts.tripplanner.data.repository.TripRepository
+import com.pgoorts.tripplanner.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import androidx.work.WorkInfo
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
+
+/** Drives the sync status bar in [com.pgoorts.tripplanner.ui.trip.OpenedTripScreen]. */
+enum class SyncBarStatus { IDLE, IN_PROGRESS, FAILED }
 
 /**
  * Represents a single day slot in the itinerary.
@@ -38,7 +46,11 @@ data class ItineraryDay(
 data class ItineraryEvent(
     val event: EventEntity,
     /** Null for single-day events; "Day X of Y" for multi-day spanning. */
-    val multiDayLabel: String? = null
+    val multiDayLabel: String? = null,
+    /** True when this day slot is the event's start date (always true for single-day events). */
+    val isFirstDay: Boolean = true,
+    /** True when this day slot is the event's end date (always true for single-day events). */
+    val isLastDay: Boolean = true
 )
 
 data class OpenedTripUiState(
@@ -58,7 +70,8 @@ class OpenedTripViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val reminderRepository: ReminderRepository,
     private val userSessionManager: UserSessionManager,
-    private val preferencesRepository: PreferencesRepository
+    private val preferencesRepository: PreferencesRepository,
+    private val syncScheduler: SyncScheduler
 ) : ViewModel() {
 
     private val tripId: String = checkNotNull(savedStateHandle["tripId"])
@@ -99,6 +112,55 @@ class OpenedTripViewModel @Inject constructor(
             initialValue = null
         )
 
+    /** Timestamp of the last fully-successful background/manual sync pass, across all trips. */
+    val lastSuccessfulSyncAt: StateFlow<Long?> = preferencesRepository.lastSuccessfulSyncAt
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null
+        )
+
+    private val _syncStatus = MutableStateFlow(SyncBarStatus.IDLE)
+    val syncStatus: StateFlow<SyncBarStatus> = _syncStatus.asStateFlow()
+
+    /**
+     * Triggers a one-off sync; surfaces a distinct failure state immediately if offline.
+     *
+     * Observes the freshly-enqueued request by its own ID rather than by the unique work name —
+     * the unique-work flow reflects whatever this work name's *last* run (possibly from a prior
+     * app session) ended up as, so subscribing to it eagerly on screen open made the bar flash
+     * "syncing"/"failed" for an old run that already finished. Scoping to this request's ID means
+     * the bar only ever reflects a sync actually happening right now.
+     */
+    fun triggerManualSync() {
+        if (!syncScheduler.isNetworkAvailable()) {
+            markSyncFailedThenIdle()
+            return
+        }
+        val workId = syncScheduler.triggerManualSync()
+        viewModelScope.launch {
+            syncScheduler.observeSyncWorkInfo(workId).collect { info ->
+                when (info?.state) {
+                    WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED ->
+                        _syncStatus.value = SyncBarStatus.IN_PROGRESS
+                    WorkInfo.State.SUCCEEDED ->
+                        _syncStatus.value = SyncBarStatus.IDLE
+                    WorkInfo.State.FAILED, WorkInfo.State.CANCELLED ->
+                        markSyncFailedThenIdle()
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    private fun markSyncFailedThenIdle() {
+        viewModelScope.launch {
+            _syncStatus.value = SyncBarStatus.FAILED
+            delay(3_000)
+            if (_syncStatus.value == SyncBarStatus.FAILED) _syncStatus.value = SyncBarStatus.IDLE
+        }
+    }
+
     /**
      * Groups events by day, spanning multi-day events across all days they cover.
      * All-day/no-time events sorted first within a day, then by start time.
@@ -131,7 +193,12 @@ class OpenedTripViewModel @Inject constructor(
                     "Day $dayIndex of $totalDays"
                 } else null
 
-                ItineraryEvent(event = event, multiDayLabel = multiDayLabel)
+                ItineraryEvent(
+                    event = event,
+                    multiDayLabel = multiDayLabel,
+                    isFirstDay = day.isEqual(evStart),
+                    isLastDay = day.isEqual(evEnd)
+                )
             }.sortedWith(
                 compareBy(
                     // All-day (null startTime) first
@@ -153,7 +220,11 @@ class OpenedTripViewModel @Inject constructor(
         endTime: String? = null,
         location: String? = null,
         timezone: String = "UTC",
-        description: String? = null
+        description: String? = null,
+        flightNumber: String? = null,
+        departureAirportCode: String? = null,
+        arrivalAirportCode: String? = null,
+        bookingNumber: String? = null
     ) {
         viewModelScope.launch {
             eventRepository.createEvent(
@@ -166,7 +237,11 @@ class OpenedTripViewModel @Inject constructor(
                 endTime = endTime,
                 location = location,
                 timezone = timezone,
-                description = description
+                description = description,
+                flightNumber = flightNumber,
+                departureAirportCode = departureAirportCode,
+                arrivalAirportCode = arrivalAirportCode,
+                bookingNumber = bookingNumber
             )
         }
     }
