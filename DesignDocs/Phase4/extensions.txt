@@ -1,1 +1,3 @@
 * On adding a google drive file instead of pasting the url: use the storage access framework to let the user pick a file, then check if the authority of the picked file is com.google.android.apps.docs.storage, and use that uri to store in the database. Other users will be able to open it, and request permission if they cannot view it. Verify this and implement if you think it's correct
+* Also add a note type for files. These will be uploaded to firebase too. Provide options to choose the file, and open the file
+* pkpass cannpt be chosen, it seems. It says "rendering coming soon"

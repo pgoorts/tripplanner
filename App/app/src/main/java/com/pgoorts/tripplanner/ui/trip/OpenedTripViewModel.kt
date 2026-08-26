@@ -251,13 +251,22 @@ class OpenedTripViewModel @Inject constructor(
     }
 
     // --- Note actions ---
-    fun createNote(title: String, type: NoteType) {
+    fun createNote(
+        title: String,
+        type: NoteType,
+        content: String = "",
+        localAttachmentPath: String? = null,
+        id: String = java.util.UUID.randomUUID().toString()
+    ) {
         viewModelScope.launch {
             noteRepository.createNote(
                 tripId = tripId,
                 eventId = null,
                 title = title,
-                type = type
+                type = type,
+                content = content,
+                localAttachmentPath = localAttachmentPath,
+                id = id
             )
         }
     }

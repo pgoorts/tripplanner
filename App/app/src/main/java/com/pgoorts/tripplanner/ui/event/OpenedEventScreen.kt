@@ -5,6 +5,8 @@ package com.pgoorts.tripplanner.ui.event
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,12 +33,20 @@ import com.pgoorts.tripplanner.data.local.entity.EventCategory
 import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
+import com.pgoorts.tripplanner.data.local.entity.classifyNoteUrl
+import com.pgoorts.tripplanner.pkpass.PkpassContent
+import com.pgoorts.tripplanner.pkpass.PkpassParser
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -483,9 +493,10 @@ fun OpenedEventScreen(
 
     if (showAddNoteDialog) {
         AddNoteDialog(
+            tripId = uiState.event?.tripId.orEmpty(),
             onDismiss = { showAddNoteDialog = false },
-            onConfirm = { title, type ->
-                viewModel.addNote(title, type)
+            onConfirm = { title, type, content, localAttachmentPath, id ->
+                viewModel.addNote(title, type, content, localAttachmentPath, id)
                 showAddNoteDialog = false
             }
         )
@@ -658,13 +669,63 @@ private fun validateEventForm(
     return null
 }
 
+private enum class NoteKind(val label: String) {
+    TEXT_BLOCK("Text Block"),
+    CHECKLIST("Checklist"),
+    LINK("Link (paste a URL)"),
+    PASS("Pass (.pkpass)")
+}
+
 // Dialog components locally simplified or imported
 @Composable
-private fun AddNoteDialog(onDismiss: () -> Unit, onConfirm: (String, NoteType) -> Unit) {
+private fun AddNoteDialog(
+    tripId: String,
+    onDismiss: () -> Unit,
+    onConfirm: (title: String, type: NoteType, content: String, localAttachmentPath: String?, id: String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val noteId = remember { java.util.UUID.randomUUID().toString() }
+
     var title by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(NoteType.TEXT_BLOCK) }
-    var typeExpanded by remember { mutableStateOf(false) }
+    var kind by remember { mutableStateOf(NoteKind.TEXT_BLOCK) }
+    var kindExpanded by remember { mutableStateOf(false) }
+    var urlText by remember { mutableStateOf("") }
+    var pkpassContent by remember { mutableStateOf<PkpassContent?>(null) }
+    var pkpassLocalPath by remember { mutableStateOf<String?>(null) }
+    var pkpassFileName by remember { mutableStateOf<String?>(null) }
+    var isParsingPkpass by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    val pickPkpassLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isParsingPkpass = true
+        error = null
+        scope.launch {
+            val originalFileName = PkpassParser.queryDisplayName(context, uri)
+            val storagePath = PkpassParser.buildStoragePath(tripId, noteId)
+            val parsed = withContext(Dispatchers.IO) {
+                try {
+                    PkpassParser.parse(context, uri, storagePath, originalFileName)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (parsed == null) {
+                isParsingPkpass = false
+                error = "Couldn't read this .pkpass file"
+                return@launch
+            }
+            val localPath = withContext(Dispatchers.IO) {
+                PkpassParser.copyToLocalStorage(context, uri, noteId)
+            }
+            pkpassContent = parsed
+            pkpassLocalPath = localPath
+            pkpassFileName = originalFileName
+            if (title.isBlank()) title = parsed.description.ifBlank { originalFileName }
+            isParsingPkpass = false
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -680,27 +741,67 @@ private fun AddNoteDialog(onDismiss: () -> Unit, onConfirm: (String, NoteType) -
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                ExposedDropdownMenuBox(expanded = typeExpanded, onExpandedChange = { typeExpanded = it }) {
+                ExposedDropdownMenuBox(expanded = kindExpanded, onExpandedChange = { kindExpanded = it }) {
                     OutlinedTextField(
-                        value = type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                        value = kind.label,
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Type", color = Grey500) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = kindExpanded) },
                         colors = tripTextFieldColors(),
                         modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
                     ExposedDropdownMenu(
-                        expanded = typeExpanded,
-                        onDismissRequest = { typeExpanded = false },
+                        expanded = kindExpanded,
+                        onDismissRequest = { kindExpanded = false },
                         modifier = Modifier.background(Navy700)
                     ) {
-                        NoteType.entries.forEach { nt ->
-                            val (ntColor, ntIcon) = noteTypeVisuals(nt)
+                        NoteKind.entries.forEach { k ->
                             DropdownMenuItem(
-                                text = { Text(nt.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }, color = White) },
-                                onClick = { type = nt; typeExpanded = false },
-                                leadingIcon = { Icon(ntIcon, contentDescription = null, tint = ntColor, modifier = Modifier.size(18.dp)) }
+                                text = { Text(k.label, color = White) },
+                                onClick = { kind = k; kindExpanded = false; error = null },
+                                leadingIcon = { Icon(noteKindIcon(k), contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp)) }
+                            )
+                        }
+                    }
+                }
+
+                when (kind) {
+                    NoteKind.TEXT_BLOCK, NoteKind.CHECKLIST -> {}
+
+                    NoteKind.LINK -> {
+                        OutlinedTextField(
+                            value = urlText,
+                            onValueChange = { urlText = it; error = null },
+                            label = { Text("URL", color = Grey500) },
+                            singleLine = true,
+                            colors = tripTextFieldColors(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (urlText.isNotBlank()) {
+                            Text(
+                                "Detected automatically as: ${classifyNoteUrl(urlText).name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Grey500
+                            )
+                        }
+                    }
+
+                    NoteKind.PASS -> {
+                        OutlinedButton(
+                            onClick = { pickPkpassLauncher.launch("*/*") },
+                            enabled = !isParsingPkpass,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                when {
+                                    isParsingPkpass -> "Reading pass..."
+                                    pkpassFileName != null -> pkpassFileName!!
+                                    else -> "Choose .pkpass file"
+                                }
                             )
                         }
                     }
@@ -713,13 +814,33 @@ private fun AddNoteDialog(onDismiss: () -> Unit, onConfirm: (String, NoteType) -
             Button(
                 onClick = {
                     if (title.isBlank()) { error = "Please enter a title"; return@Button }
-                    onConfirm(title.trim(), type)
+                    when (kind) {
+                        NoteKind.TEXT_BLOCK -> onConfirm(title.trim(), NoteType.TEXT_BLOCK, "", null, noteId)
+                        NoteKind.CHECKLIST -> onConfirm(title.trim(), NoteType.CHECKLIST, "", null, noteId)
+                        NoteKind.LINK -> {
+                            if (urlText.isBlank()) { error = "Please enter a URL"; return@Button }
+                            onConfirm(title.trim(), classifyNoteUrl(urlText), urlText.trim(), null, noteId)
+                        }
+                        NoteKind.PASS -> {
+                            val content = pkpassContent
+                            val localPath = pkpassLocalPath
+                            if (content == null || localPath == null) { error = "Please choose a .pkpass file"; return@Button }
+                            onConfirm(title.trim(), NoteType.PKPASS, Json.encodeToString(content), localPath, noteId)
+                        }
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Teal300, contentColor = Navy950)
             ) { Text("Add", fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Grey300) } }
     )
+}
+
+private fun noteKindIcon(kind: NoteKind): ImageVector = when (kind) {
+    NoteKind.TEXT_BLOCK -> Icons.Filled.Article
+    NoteKind.CHECKLIST -> Icons.Filled.Checklist
+    NoteKind.LINK -> Icons.Filled.Link
+    NoteKind.PASS -> Icons.Filled.CreditCard
 }
 
 @Composable

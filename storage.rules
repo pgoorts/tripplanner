@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function getUserEmail() {
+      return request.auth.token.email;
+    }
+    function getTrip(tripId) {
+      return firestore.get(/databases/(default)/documents/trips/$(tripId)).data;
+    }
+    function hasTripAccess(tripId) {
+      return isSignedIn() && (getUserEmail() in getTrip(tripId).collaborators);
+    }
+    function isCoOwner(tripId) {
+      return isSignedIn() && (getTrip(tripId).collaborators[getUserEmail()] == 'CO_OWNER');
+    }
+
+    match /pkpass/{tripId}/{noteId}/{fileName} {
+      allow read: if hasTripAccess(tripId);
+      allow write: if isCoOwner(tripId);
+    }
+  }
+}

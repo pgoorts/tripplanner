@@ -175,9 +175,85 @@ Lodging booking number (editable on Add Event + Opened Event, list card stays ge
 booking number shown), and the sync round-trip (flight/lodging fields survive edit + sync +
 re-view on a second device/fresh install). Block 4 complete.
 
-Next: Block 5 (Pkpass Note Type) — starting implementation.
+Block 5 (Pkpass Note Type) [CODE COMPLETE, pending device check]:
+- `pkpass/PkpassContent.kt` (`PkpassContent`/`PkpassField`, `kotlinx.serialization`-annotated) and
+  `pkpass/PkpassParser.kt` implement Step 5.1: unzips a picked `.pkpass` via `ZipInputStream`,
+  reads `pass.json`, flattens whichever of `primaryFields`/`secondaryFields`/`auxiliaryFields`/
+  `backFields` the pass style object (`boardingPass`/`coupon`/`eventTicket`/`generic`/`storeCard`)
+  defines into one `fields` list, and picks the first entry of `barcodes` (falling back to the
+  legacy singular `barcode` key) for `barcodeMessage`/`barcodeFormat` (normalized to
+  QR/PDF417/AZTEC/CODE128, per datastructure.txt §3). Also provides `buildStoragePath`
+  (`pkpass/{tripId}/{noteId}/original.pkpass`), `queryDisplayName` (via
+  `OpenableColumns.DISPLAY_NAME`), `copyToLocalStorage` (app-internal
+  `filesDir/pkpass/{noteId}/original.pkpass`), and `extractStoragePath` (pulled back out of a
+  persisted note's `content` JSON string, used by the sync worker). `storage.rules` added at repo
+  root (mirrors `firestore.rules`' collaborator/co-owner checks via `firestore.get(...)` from
+  within Storage rules) and wired into `firebase.json`'s new `storage` section — needs
+  `firebase deploy --only storage` from the developer (same manual-deploy pattern as Phase 2
+  Hosting / the Phase 3 Block 3 Firestore rules fix).
+- `NoteType.kt` gained `classifyNoteUrl()` (Step 5.3): classifies a pasted URL into
+  `GOOGLE_DOC`/`GOOGLE_DRIVE`/`WEB_URL` by substring match on
+  `docs./sheets./slides.google.com` vs `drive.google.com`, else `WEB_URL` — same rule the old
+  three-way picker relied on, just centralized.
+- `AddNoteDialog` (both `OpenedTripScreen.kt` for trip-level notes and `OpenedEventScreen.kt` for
+  event-linked notes — kept as two near-identical private composables, matching how each screen
+  already had its own copy pre-Block-5) replaces the raw `NoteType` picker with a 4-entry `NoteKind`
+  picker (Text Block / Checklist / Link / Pass) per designmockups/AddNote.dc.html (Step 5.2/5.3):
+  * Link shows one URL field with a live "Detected automatically as: ..." caption from
+    `classifyNoteUrl()`; the resulting `NoteType` + raw URL become the note's `content`.
+  * Pass shows a "Choose .pkpass file" button (`ActivityResultContracts.GetContent()`, `"*/*"` —
+    `.pkpass` has no registered Android MIME type so extension-based filtering isn't available via
+    this contract) that, on pick, runs `PkpassParser.parse()` + `copyToLocalStorage()` on
+    `Dispatchers.IO`, pre-fills the title from the pass's `description` if blank, and disables the
+    button with a "Reading pass..." label while parsing. A client-generated `noteId` (`remember`ed
+    UUID) is used for both the deterministic `storagePath` and the note's actual `id`, so
+    `content.storagePath` is correct before the note entity even exists.
+  * `NoteRepository.createNote()` gained `localAttachmentPath`/`id` parameters (defaulting to a
+    fresh UUID, so every other caller is unaffected) so the dialog's pre-generated ID/local file
+    path flow through to the `NoteEntity` row unchanged; threaded through
+    `OpenedTripViewModel.createNote()` and `OpenedEventViewModel.addNote()` the same way.
+- `SyncWorker.kt` (Step 5.4): on `PENDING_INSERT`/`PENDING_UPDATE` of a `PKPASS` note with a
+  non-null `localAttachmentPath`, uploads that file to `FirebaseStorage` at `content.storagePath`
+  (extracted via `PkpassParser.extractStoragePath`) *before* writing the Note document; the note
+  is only marked `SYNCED` (and its local cached file deleted, `localAttachmentPath` cleared) once
+  both the Storage upload and the Firestore write succeed — if the Storage upload throws, the
+  Firestore write still proceeds (idempotent `.set()`) but the note stays in its pending state so
+  the next sync pass retries just the attachment. On `PENDING_DELETE` of a `PKPASS` note, deletes
+  the Storage object at `content.storagePath` after the Firestore delete succeeds, best-effort
+  (failure is logged, not retried, per datastructure.txt §5).
+- `OpenedNoteScreen.kt` (Step 5.5): `PkpassCard` composable renders organization name, pass
+  type/description, the flattened `fields` in a 2-column grid, and a barcode (ZXing
+  `MultiFormatWriter` → `BitMatrix` → manually-painted `Bitmap` → `Image`) on a white card matching
+  designmockups/PkpassView.dc.html; the note-type badge above the card is suppressed for `PKPASS`
+  (the wallet card itself conveys the type). A `DisposableEffect` keyed on `note?.type` sets
+  `window.attributes.screenBrightness = 1f` while a Pkpass note is open and restores
+  `BRIGHTNESS_OVERRIDE_NONE` on leaving (a `findActivity()` `ContextWrapper`-walk extension gets
+  the `Activity`/`Window` from the Compose `LocalContext`).
+- `com.google.zxing:core:3.5.3` added to `app/build.gradle.kts`.
+- Per the developer: `./gradlew assembleDebug` failed when attempted inside this container
+  (environment/tooling issue, not investigated further since builds aren't done in-container —
+  see the note below); the developer built it themselves outside the container and confirmed it
+  succeeds.
 
-Note: Only build release builds unless specified otherwise
+`storage.rules` deployed: `firebase deploy --only storage` against project `tripplanner-a6078`
+("released rules storage.rules to firebase.storage", deploy console link confirmed). The
+container's cached `firebase-tools` login had gone stale; interactive `firebase login --reauth`
+also failed in-container (`auth.firebase.tools/attest` unreachable — a known firebase-tools
+device-attestation issue in sandboxed environments), so the developer ran the login flow
+themselves and pasted the resulting session back in. (A developer-supplied service-account key
+was tried first as a fallback, per the Block 3 pattern, but that key's default
+`firebase-adminsdk-fbsvc@...` service account lacks the `firebaserules.releases.create` /
+`serviceusage` IAM permissions rules deploys need — deleted immediately after use, never
+committed.) `firestore.rules` is unchanged since Block 3, so nothing to redeploy there.
+
+Not yet done — Step 5.6 (Block Verification), which needs a developer device/second-device pass:
+import a sample `.pkpass` as a note and confirm title/sync/Firestore+Storage doc; open it and
+confirm the barcode scans, fields display, and brightness raises/restores; open the same note on
+a second device/account without re-importing; delete it and confirm both the Firestore doc and
+Storage object are gone; and paste a Google Doc URL, a Drive URL, and a plain web URL in turn to
+confirm each auto-classifies correctly.
+
+Note: Do not make builds. Everything is built outside the container
 
 Note: DesignDocs/Phase4/description.txt already exists (a bug list, staged in git as a rename
 from DesignDocs/Phase3/bugs.txt) — this is future work, not touched yet.

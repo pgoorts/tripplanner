@@ -2,9 +2,15 @@
 
 package com.pgoorts.tripplanner.ui.note
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import android.view.WindowManager
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,18 +25,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.pkpass.PkpassContent
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.serialization.json.Json
 
 @Composable
 fun OpenedNoteScreen(
@@ -47,6 +59,22 @@ fun OpenedNoteScreen(
     var newChecklistItemText by remember { mutableStateOf("") }
     var showTemplateDialog by remember { mutableStateOf(false) }
     var pendingDeleteItemIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Raise screen brightness while a Pkpass is open (easier to scan), restore on leaving.
+    DisposableEffect(uiState.note?.type) {
+        val window = context.findActivity()?.window
+        val isPkpass = uiState.note?.type == NoteType.PKPASS
+        if (isPkpass && window != null) {
+            window.attributes = window.attributes.apply { screenBrightness = 1f }
+        }
+        onDispose {
+            if (isPkpass && window != null) {
+                window.attributes = window.attributes.apply {
+                    screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
+            }
+        }
+    }
 
     LaunchedEffect(uiState.note) {
         uiState.note?.let { note ->
@@ -108,16 +136,18 @@ fun OpenedNoteScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Note Type Badge
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Teal300.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = note.type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Teal200,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
+                if (note.type != NoteType.PKPASS) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Teal300.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = note.type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Teal200,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
                 when (note.type) {
@@ -325,8 +355,18 @@ fun OpenedNoteScreen(
                     }
 
                     NoteType.PKPASS -> {
-                        // Wallet-style pass rendering (barcode + pass fields) lands in Phase 3 Block 5.
-                        Text("Pass rendering coming soon", color = Grey500)
+                        val parsedContent = remember(note.content) {
+                            try {
+                                Json.decodeFromString<PkpassContent>(note.content)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        if (parsedContent != null) {
+                            PkpassCard(parsedContent)
+                        } else {
+                            Text("Unable to load this pass.", color = Grey500)
+                        }
                     }
                 }
             }
@@ -406,4 +446,115 @@ private fun getNoteTypeVisuals(type: NoteType): Pair<Color, ImageVector> = when 
     NoteType.GOOGLE_DOC   -> Pair(ActivityTeal, Icons.Filled.Description)
     NoteType.GOOGLE_DRIVE -> Pair(LodgingPurple, Icons.Filled.Cloud)
     NoteType.PKPASS       -> Pair(Teal300, Icons.Filled.CreditCard)
+}
+
+private fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
+
+@Composable
+private fun PkpassCard(content: PkpassContent) {
+    val barcodeBitmap = remember(content.barcodeMessage, content.barcodeFormat) {
+        renderPkpassBarcode(content.barcodeMessage, content.barcodeFormat)
+    }
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Navy800),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                content.organizationName.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = Grey300,
+                letterSpacing = 1.sp
+            )
+            Text(
+                content.description.ifBlank { content.passType },
+                style = MaterialTheme.typography.titleLarge,
+                color = White,
+                fontWeight = FontWeight.Bold
+            )
+
+            if (content.fields.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                content.fields.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        row.forEach { field ->
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(field.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = Grey300)
+                                Text(field.value, style = MaterialTheme.typography.bodyMedium, color = White, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+
+            Divider(color = Grey700, modifier = Modifier.padding(vertical = 8.dp))
+
+            Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) {
+                    if (barcodeBitmap != null) {
+                        Image(
+                            bitmap = barcodeBitmap.asImageBitmap(),
+                            contentDescription = "Pass barcode",
+                            modifier = Modifier.size(180.dp)
+                        )
+                    } else {
+                        Text("Unable to render barcode", color = Navy900)
+                    }
+                    if (content.serialNumber.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(content.serialNumber, style = MaterialTheme.typography.labelSmall, color = Grey700, letterSpacing = 2.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.WbSunny, contentDescription = null, tint = Grey500, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text("Screen brightness increased for scanning", style = MaterialTheme.typography.labelSmall, color = Grey500)
+    }
+}
+
+private fun renderPkpassBarcode(message: String, formatName: String): Bitmap? {
+    if (message.isBlank()) return null
+    val format = when (formatName) {
+        "PDF417" -> BarcodeFormat.PDF_417
+        "AZTEC" -> BarcodeFormat.AZTEC
+        "CODE128" -> BarcodeFormat.CODE_128
+        else -> BarcodeFormat.QR_CODE
+    }
+    return try {
+        val matrix = MultiFormatWriter().encode(message, format, 480, 480)
+        val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.RGB_565)
+        for (x in 0 until matrix.width) {
+            for (y in 0 until matrix.height) {
+                bitmap.setPixel(x, y, if (matrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (e: Exception) {
+        null
+    }
 }

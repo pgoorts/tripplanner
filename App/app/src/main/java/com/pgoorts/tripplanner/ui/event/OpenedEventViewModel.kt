@@ -115,14 +115,23 @@ class OpenedEventViewModel @Inject constructor(
         }
     }
 
-    fun addNote(title: String, type: NoteType) {
+    fun addNote(
+        title: String,
+        type: NoteType,
+        content: String = "",
+        localAttachmentPath: String? = null,
+        id: String = java.util.UUID.randomUUID().toString()
+    ) {
         val currentEvent = uiState.value.event ?: return
         viewModelScope.launch {
             noteRepository.createNote(
                 tripId = currentEvent.tripId,
                 eventId = eventId,
                 title = title,
-                type = type
+                type = type,
+                content = content,
+                localAttachmentPath = localAttachmentPath,
+                id = id
             )
         }
     }

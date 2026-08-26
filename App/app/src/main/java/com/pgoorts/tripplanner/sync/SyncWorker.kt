@@ -1,9 +1,11 @@
 package com.pgoorts.tripplanner.sync
 
 import android.content.Context
+import android.net.Uri
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.dao.TripDao
 import com.pgoorts.tripplanner.data.local.dao.EventDao
@@ -12,6 +14,7 @@ import com.pgoorts.tripplanner.data.local.dao.ReminderDao
 import com.pgoorts.tripplanner.data.local.dao.PackingTemplateDao
 import com.pgoorts.tripplanner.data.local.entity.*
 import com.pgoorts.tripplanner.data.repository.PreferencesRepository
+import com.pgoorts.tripplanner.pkpass.PkpassParser
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.File
 
 class SyncWorker(
     context: Context,
@@ -154,10 +158,33 @@ class SyncWorker(
         }
 
         // --- Upload Notes ---
+        val storage = FirebaseStorage.getInstance()
         val pendingNotes = noteDao.getPendingSyncNotes()
         for (note in pendingNotes) {
             when (note.syncState) {
                 SyncState.PENDING_INSERT, SyncState.PENDING_UPDATE -> {
+                    // A Pkpass note's raw file uploads to Storage independently of the Note
+                    // document below — a transient Storage failure here doesn't block the Note
+                    // document from syncing, since `content` already carries everything needed
+                    // to render (per datastructure.txt §5). It's only marked SYNCED, and its
+                    // local cached copy cleared, once BOTH have succeeded.
+                    val localAttachmentPath = note.localAttachmentPath
+                    var attachmentSynced = true
+                    if (note.type == NoteType.PKPASS && localAttachmentPath != null) {
+                        val storagePath = PkpassParser.extractStoragePath(note.content)
+                        attachmentSynced = if (storagePath != null) {
+                            try {
+                                storage.reference.child(storagePath)
+                                    .putFile(Uri.fromFile(File(localAttachmentPath)))
+                                    .await()
+                                true
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                false
+                            }
+                        } else false
+                    }
+
                     val data = mapOf(
                         "tripId" to note.tripId,
                         "eventId" to note.eventId,
@@ -170,12 +197,35 @@ class SyncWorker(
                     db.collection("trips").document(note.tripId)
                         .collection("notes").document(note.id)
                         .set(data).await()
-                    noteDao.insertNote(note.copy(syncState = SyncState.SYNCED, lastSyncedAt = System.currentTimeMillis()))
+
+                    if (attachmentSynced) {
+                        if (note.type == NoteType.PKPASS && localAttachmentPath != null) {
+                            File(localAttachmentPath).delete()
+                        }
+                        noteDao.insertNote(
+                            note.copy(
+                                syncState = SyncState.SYNCED,
+                                lastSyncedAt = System.currentTimeMillis(),
+                                localAttachmentPath = null
+                            )
+                        )
+                    }
+                    // else: leave syncState as-is; the next sync pass retries the Storage upload
+                    // (the Firestore write above is idempotent, so re-running it is harmless).
                 }
                 SyncState.PENDING_DELETE -> {
                     db.collection("trips").document(note.tripId)
                         .collection("notes").document(note.id)
                         .delete().await()
+                    if (note.type == NoteType.PKPASS) {
+                        PkpassParser.extractStoragePath(note.content)?.let { storagePath ->
+                            try {
+                                storage.reference.child(storagePath).delete().await()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
                     noteDao.deleteNote(note)
                 }
                 else -> {}

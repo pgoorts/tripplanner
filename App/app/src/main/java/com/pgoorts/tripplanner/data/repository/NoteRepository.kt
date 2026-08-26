@@ -27,11 +27,13 @@ class NoteRepository @Inject constructor(
         eventId: String? = null,
         title: String,
         type: NoteType,
-        content: String = ""
+        content: String = "",
+        localAttachmentPath: String? = null,
+        id: String = UUID.randomUUID().toString()
     ): NoteEntity {
         val now = System.currentTimeMillis()
         val note = NoteEntity(
-            id = UUID.randomUUID().toString(),
+            id = id,
             tripId = tripId,
             eventId = eventId,
             title = title,
@@ -39,7 +41,8 @@ class NoteRepository @Inject constructor(
             content = content,
             createdAt = now,
             updatedAt = now,
-            syncState = SyncState.PENDING_INSERT
+            syncState = SyncState.PENDING_INSERT,
+            localAttachmentPath = localAttachmentPath
         )
         noteDao.insertNote(note)
         return note
