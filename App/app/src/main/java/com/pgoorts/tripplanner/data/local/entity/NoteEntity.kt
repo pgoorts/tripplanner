@@ -29,5 +29,5 @@ data class NoteEntity(
     val updatedAt: Long,
     val syncState: SyncState = SyncState.PENDING_INSERT,
     val lastSyncedAt: Long? = null,
-    val localAttachmentPath: String? = null // Local-only; PKPASS notes only, cleared once uploaded
+    val localAttachmentPath: String? = null // Local-only; PKPASS/FILE notes only, cleared once uploaded
 )

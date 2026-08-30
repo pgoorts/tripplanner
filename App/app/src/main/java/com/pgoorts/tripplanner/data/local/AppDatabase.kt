@@ -25,7 +25,7 @@ import com.pgoorts.tripplanner.data.local.entity.TripEntity
         ReminderEntity::class,
         PackingTemplateEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -47,5 +47,18 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("ALTER TABLE events ADD COLUMN arrivalAirportCode TEXT")
         db.execSQL("ALTER TABLE events ADD COLUMN bookingNumber TEXT")
         db.execSQL("ALTER TABLE notes ADD COLUMN localAttachmentPath TEXT")
+    }
+}
+
+// Phase 4: splits event timezone into start/end (physical "timezone" column reused for start,
+// backfilled into the new "endTimezone" column so pre-existing events keep today's single-timezone
+// behavior until edited) + adds trip cover-photo fields. All added columns are nullable.
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE events ADD COLUMN endTimezone TEXT")
+        db.execSQL("UPDATE events SET endTimezone = timezone")
+        db.execSQL("ALTER TABLE trips ADD COLUMN coverPhotoStoragePath TEXT")
+        db.execSQL("ALTER TABLE trips ADD COLUMN coverPhotoSource TEXT")
+        db.execSQL("ALTER TABLE trips ADD COLUMN localCoverPhotoPath TEXT")
     }
 }

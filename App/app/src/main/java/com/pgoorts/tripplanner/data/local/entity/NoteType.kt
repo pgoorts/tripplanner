@@ -6,7 +6,8 @@ enum class NoteType {
     WEB_URL,
     GOOGLE_DOC,
     GOOGLE_DRIVE,
-    PKPASS
+    PKPASS,
+    FILE
 }
 
 /** Classifies a pasted link into the specific [NoteType] it represents, per description_detail.txt §7. */

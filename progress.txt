@@ -420,4 +420,46 @@ confirm/override, each already resolved with a documented default rather than le
   as typed). Block 3 is scoped to two independently editable/synced fields, not new conversion
   display logic — flagged so this isn't mistaken for a missed requirement.
 
-Pending developer confirmation of implementation_plan.txt before starting Block 1.
+Developer confirmed ("ok, proceed"). implementation_plan.txt step complete.
+
+Step: implementation - Block 1 code complete, pending developer build/device verification
+implementation_plan.txt (8 blocks) confirmed by developer; implementation started.
+
+Block 1 (Build Environment, New Dependency & Schema Scaffolding) [CODE COMPLETE, pending device
+check]:
+- Added `com.squareup.okhttp3:okhttp:4.12.0` to `App/app/build.gradle.kts`.
+- Schema: `EventEntity.timezone` renamed to `startTimezone` (`@ColumnInfo(name = "timezone")`,
+  same physical column) + new nullable `endTimezone`; `TripEntity` gained nullable
+  `coverPhotoStoragePath`/`coverPhotoSource`/`localCoverPhotoPath`; `NoteType` gained `FILE`;
+  `NoteEntity.localAttachmentPath`'s comment broadened to cover `FILE` too.
+- `AppDatabase.version` bumped 2 -> 3, `MIGRATION_2_3` added (`endTimezone` column + backfill from
+  `timezone`, three new `trips` columns) and registered in `DatabaseModule.kt` alongside
+  `MIGRATION_1_2`.
+- Renaming `EventEntity.timezone` broke every call site that named it: fixed
+  `EventRepository.createEvent`, `OpenedEventViewModel.updateEvent`, `OpenedEventScreen.kt`'s
+  `LaunchedEffect`, `SyncWorker.kt`'s upload map + both download construction sites (new-row and
+  updated-row), and `AppDatabaseTest.kt`'s `buildEvent` helper. Kept every function's *public*
+  `timezone: String` param name unchanged for now (Block 3's job to split it into two) — internally
+  each now writes `startTimezone = timezone, endTimezone = timezone` (create) or
+  `startTimezone = timezone, endTimezone = timezone` (update's `.copy(...)`, so editing via today's
+  still-single field keeps both in sync, matching pre-Phase-4 behavior exactly until Block 3 lands).
+- Adding `NoteType.FILE` broke 4 exhaustive `when(NoteType)` blocks (`OpenedTripScreen.kt`,
+  `OpenedEventScreen.kt`, `OpenedNoteScreen.kt` x2) — added a `Teal200`/`InsertDriveFile` visual
+  everywhere, plus a "File rendering coming soon" placeholder in the note-content renderer (same
+  temporary-placeholder pattern Phase 3 Block 1 used for `PKPASS`; Block 7 replaces it with the
+  real card).
+- Added FileProvider plumbing for Block 7 (unused until then): `<provider>` entry in
+  `AndroidManifest.xml` (`${applicationId}.fileprovider`) + new `res/xml/file_paths.xml`.
+- Added cover-photo API key scaffolding for Block 5 (unused until then): `buildFeatures.buildConfig
+  = true`, `PLACES_API_KEY`/`UNSPLASH_ACCESS_KEY` `buildConfigField`s read from `App/local.properties`
+  (gitignored, same pattern as `keystore.properties`) with an empty-string default; documented both
+  keys as commented-out entries in `local.properties` itself for discoverability.
+- Not run in-container per the standing note below — developer builds `./gradlew assembleDebug`
+  outside the container.
+
+Not yet done — Block Verification (developer, outside container): confirm `assembleDebug` succeeds,
+install over an existing Phase-3 (schema v2) install and confirm no crash/data loss (migration ran,
+not a destructive fallback), confirm a fresh install also succeeds, and confirm no visible behavior
+change from the end of Phase 3.
+
+Note: Do not make builds. Everything is built outside the container.

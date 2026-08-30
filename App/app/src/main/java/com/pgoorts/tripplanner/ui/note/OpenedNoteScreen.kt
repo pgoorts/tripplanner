@@ -368,6 +368,12 @@ fun OpenedNoteScreen(
                             Text("Unable to load this pass.", color = Grey500)
                         }
                     }
+
+                    NoteType.FILE -> {
+                        // Placeholder — Phase 4 Block 7 replaces this with the real file card
+                        // (filename, type/size, Open button) and download-then-ACTION_VIEW flow.
+                        Text("File rendering coming soon.", color = Grey500)
+                    }
                 }
             }
         }
@@ -446,6 +452,7 @@ private fun getNoteTypeVisuals(type: NoteType): Pair<Color, ImageVector> = when 
     NoteType.GOOGLE_DOC   -> Pair(ActivityTeal, Icons.Filled.Description)
     NoteType.GOOGLE_DRIVE -> Pair(LodgingPurple, Icons.Filled.Cloud)
     NoteType.PKPASS       -> Pair(Teal300, Icons.Filled.CreditCard)
+    NoteType.FILE         -> Pair(Teal200, Icons.Filled.InsertDriveFile)
 }
 
 private fun Context.findActivity(): Activity? {

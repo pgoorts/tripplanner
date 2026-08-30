@@ -247,7 +247,7 @@ class AppDatabaseTest {
         tripId = tripId,
         title = "Test Event",
         category = EventCategory.ACTIVITY,
-        timezone = "Europe/Rome",
+        startTimezone = "Europe/Rome",
         startDate = "2026-06-03",
         startTime = startTime,
         endDate = "2026-06-03",

@@ -19,6 +19,18 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Cover-photo API keys (Phase 4, description_detail.txt §7 / techstack.txt §6), loaded from the
+// same untracked local.properties Android Studio already generates for sdk.dir — never committed.
+// Missing keys resolve to an empty string, in which case CoverPhotoFetcher just skips that source
+// rather than crashing (see techstack.txt §11).
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+fun localProperty(name: String): String = localProperties.getProperty(name) ?: ""
+
 android {
     namespace = "com.pgoorts.tripplanner"
     compileSdk = 34
@@ -38,6 +50,9 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "PLACES_API_KEY", "\"${localProperty("PLACES_API_KEY")}\"")
+        buildConfigField("String", "UNSPLASH_ACCESS_KEY", "\"${localProperty("UNSPLASH_ACCESS_KEY")}\"")
     }
 
     signingConfigs {
@@ -77,6 +92,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -134,6 +150,9 @@ dependencies {
 
     // ZXing (pkpass barcode/QR rendering)
     implementation("com.google.zxing:core:3.5.3")
+
+    // OkHttp (Places/Unsplash cover-photo API calls)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Google Identity / Credential Manager (for Google Sign-In)
     implementation("androidx.credentials:credentials:1.2.2")

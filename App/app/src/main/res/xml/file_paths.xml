@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backs the FileProvider declared in AndroidManifest.xml. Exposes the app-internal storage
+  directories Phase 3's Pkpass attachments and Phase 4's generic File notes stage local copies in
+  (see PkpassParser.localFilePath and the Phase 4 File-note equivalent) so they can be handed to
+  other apps via a content:// URI for ACTION_VIEW, without granting broader filesystem access.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="pkpass" path="pkpass/" />
+    <files-path name="files" path="files/" />
+</paths>

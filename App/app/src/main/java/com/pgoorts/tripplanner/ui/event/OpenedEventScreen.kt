@@ -106,7 +106,7 @@ fun OpenedEventScreen(
             title = event.title
             category = event.category
             location = event.location ?: ""
-            timezone = event.timezone
+            timezone = event.startTimezone
             startDate = event.startDate
             endDate = event.endDate
             startTime = event.startTime ?: ""
@@ -650,6 +650,7 @@ private fun noteTypeVisuals(type: NoteType): Pair<Color, ImageVector> = when (ty
     NoteType.GOOGLE_DOC   -> Pair(ActivityTeal, Icons.Filled.Description)
     NoteType.GOOGLE_DRIVE -> Pair(LodgingPurple, Icons.Filled.Cloud)
     NoteType.PKPASS       -> Pair(Teal300, Icons.Filled.CreditCard)
+    NoteType.FILE         -> Pair(Teal200, Icons.Filled.InsertDriveFile)
 }
 
 private fun validateEventForm(

@@ -1,5 +1,6 @@
 package com.pgoorts.tripplanner.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -24,7 +25,9 @@ data class EventEntity(
     val title: String,
     val category: EventCategory,
     val location: String? = null,
-    val timezone: String,            // IANA Timezone ID e.g. "Europe/Rome"
+    @ColumnInfo(name = "timezone")
+    val startTimezone: String,       // IANA Timezone ID e.g. "Europe/Rome"; physical column still "timezone"
+    val endTimezone: String? = null, // IANA Timezone ID; null reads as "same as startTimezone" (pre-Phase-4 events)
     val startDate: String,           // ISO-8601: YYYY-MM-DD
     val startTime: String? = null,   // ISO-8601: HH:MM (null = all-day)
     val endDate: String,             // ISO-8601: YYYY-MM-DD
