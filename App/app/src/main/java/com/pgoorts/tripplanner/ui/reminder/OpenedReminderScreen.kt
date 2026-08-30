@@ -4,6 +4,7 @@ package com.pgoorts.tripplanner.ui.reminder
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
@@ -13,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pgoorts.tripplanner.data.local.entity.TripRole
@@ -101,6 +103,7 @@ fun OpenedReminderScreen(
                     onValueChange = { text = it },
                     label = { Text("Reminder Description", color = Grey500) },
                     enabled = canEdit,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     colors = tripTextFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )

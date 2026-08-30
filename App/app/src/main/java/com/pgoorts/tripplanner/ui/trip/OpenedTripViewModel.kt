@@ -50,8 +50,23 @@ data class ItineraryEvent(
     /** True when this day slot is the event's start date (always true for single-day events). */
     val isFirstDay: Boolean = true,
     /** True when this day slot is the event's end date (always true for single-day events). */
-    val isLastDay: Boolean = true
+    val isLastDay: Boolean = true,
+    /** True when the event's own date range isn't fully contained within its trip's (Bug 7). */
+    val isInvalid: Boolean = false
 )
+
+/**
+ * True when [event]'s date range isn't fully contained within [trip]'s current date range.
+ * Computed on the fly, never stored (datastructure.txt §5) — narrowing/widening a trip's dates
+ * changes this on the next read with no separate "re-validate events" pass needed.
+ */
+fun isEventInvalid(event: EventEntity, trip: TripEntity): Boolean {
+    val tripStart = try { LocalDate.parse(trip.startDate) } catch (e: Exception) { return false }
+    val tripEnd = try { LocalDate.parse(trip.endDate) } catch (e: Exception) { return false }
+    val evStart = try { LocalDate.parse(event.startDate) } catch (e: Exception) { return false }
+    val evEnd = try { LocalDate.parse(event.endDate) } catch (e: Exception) { evStart }
+    return evStart.isBefore(tripStart) || evEnd.isAfter(tripEnd)
+}
 
 data class OpenedTripUiState(
     val trip: TripEntity? = null,
@@ -170,10 +185,21 @@ class OpenedTripViewModel @Inject constructor(
         val tripStart = try { LocalDate.parse(trip.startDate) } catch (e: Exception) { return emptyList() }
         val tripEnd   = try { LocalDate.parse(trip.endDate)   } catch (e: Exception) { return emptyList() }
 
-        // Collect all days in the trip range
+        // Day range: the trip's own dates, extended to cover any event whose own dates fall
+        // outside it (Bug 1 allows creating those; without this, such an event would have no day
+        // slot to render under and be unreachable in the UI — see progress.txt's Block 4 notes).
+        val eventDates = events.flatMap { event ->
+            listOfNotNull(
+                try { LocalDate.parse(event.startDate) } catch (e: Exception) { null },
+                try { LocalDate.parse(event.endDate) } catch (e: Exception) { null }
+            )
+        }
+        val rangeStart = (eventDates + tripStart).min()
+        val rangeEnd = (eventDates + tripEnd).max()
+
         val days = mutableListOf<LocalDate>()
-        var cursor = tripStart
-        while (!cursor.isAfter(tripEnd)) {
+        var cursor = rangeStart
+        while (!cursor.isAfter(rangeEnd)) {
             days.add(cursor)
             cursor = cursor.plusDays(1)
         }
@@ -197,7 +223,8 @@ class OpenedTripViewModel @Inject constructor(
                     event = event,
                     multiDayLabel = multiDayLabel,
                     isFirstDay = day.isEqual(evStart),
-                    isLastDay = day.isEqual(evEnd)
+                    isLastDay = day.isEqual(evEnd),
+                    isInvalid = isEventInvalid(event, trip)
                 )
             }.sortedWith(
                 compareBy(
@@ -219,7 +246,8 @@ class OpenedTripViewModel @Inject constructor(
         startTime: String? = null,
         endTime: String? = null,
         location: String? = null,
-        timezone: String = "UTC",
+        startTimezone: String = "UTC",
+        endTimezone: String = "UTC",
         description: String? = null,
         flightNumber: String? = null,
         departureAirportCode: String? = null,
@@ -236,7 +264,8 @@ class OpenedTripViewModel @Inject constructor(
                 startTime = startTime,
                 endTime = endTime,
                 location = location,
-                timezone = timezone,
+                startTimezone = startTimezone,
+                endTimezone = endTimezone,
                 description = description,
                 flightNumber = flightNumber,
                 departureAirportCode = departureAirportCode,
@@ -305,6 +334,18 @@ class OpenedTripViewModel @Inject constructor(
         val trip = uiState.value.trip ?: return
         viewModelScope.launch {
             tripRepository.updateTrip(trip.copy(defaultTimezone = timezone))
+        }
+    }
+
+    /**
+     * Updates this trip's date range (Bug 7). Never touches any event — an event outside the new
+     * range simply becomes/stops being flagged invalid the next time it's read (isEventInvalid is
+     * fully derived, not stored), so no separate "re-validate events" pass is needed here.
+     */
+    fun updateTripDates(startDate: String, endDate: String) {
+        val trip = uiState.value.trip ?: return
+        viewModelScope.launch {
+            tripRepository.updateTrip(trip.copy(startDate = startDate, endDate = endDate))
         }
     }
 }

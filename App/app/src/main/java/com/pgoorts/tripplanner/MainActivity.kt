@@ -24,6 +24,7 @@ import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.ui.home.HomeScreen
 import com.pgoorts.tripplanner.ui.theme.TripPlannerTheme
 import com.pgoorts.tripplanner.ui.trip.OpenedTripScreen
+import com.pgoorts.tripplanner.ui.trip.TripSettingsScreen
 import com.pgoorts.tripplanner.ui.event.OpenedEventScreen
 import com.pgoorts.tripplanner.ui.note.OpenedNoteScreen
 import com.pgoorts.tripplanner.ui.settings.SettingsScreen
@@ -37,6 +38,9 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object OpenedTrip : Screen("openedTrip/{tripId}") {
         fun createRoute(tripId: String) = "openedTrip/$tripId"
+    }
+    object TripSettings : Screen("tripSettings/{tripId}") {
+        fun createRoute(tripId: String) = "tripSettings/$tripId"
     }
     object OpenedEvent : Screen("openedEvent/{eventId}") {
         fun createRoute(eventId: String) = "openedEvent/$eventId"
@@ -128,7 +132,18 @@ class MainActivity : ComponentActivity() {
                             },
                             onReminderClick = { reminderId ->
                                 navController.navigate(Screen.OpenedReminder.createRoute(reminderId))
+                            },
+                            onTripSettingsClick = {
+                                navController.navigate(Screen.TripSettings.createRoute(tripId))
                             }
+                        )
+                    }
+                    composable(
+                        route = Screen.TripSettings.route,
+                        arguments = listOf(navArgument("tripId") { type = NavType.StringType })
+                    ) {
+                        TripSettingsScreen(
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     composable(
@@ -144,6 +159,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onReminderClick = { reminderId ->
                                 navController.navigate(Screen.OpenedReminder.createRoute(reminderId))
+                            },
+                            onOpenTripSettings = { tripId ->
+                                navController.navigate(Screen.TripSettings.createRoute(tripId))
                             }
                         )
                     }

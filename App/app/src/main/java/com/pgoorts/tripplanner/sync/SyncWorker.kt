@@ -130,6 +130,7 @@ class SyncWorker(
                         "category" to event.category.name,
                         "location" to event.location,
                         "timezone" to event.startTimezone,
+                        "endTimezone" to event.endTimezone,
                         "startDate" to event.startDate,
                         "startTime" to event.startTime,
                         "endDate" to event.endDate,
@@ -457,6 +458,10 @@ class SyncWorker(
             }
             val remoteLocation = eventDoc.getString("location")
             val remoteTimezone = eventDoc.getString("timezone") ?: "UTC"
+            // Falls back to "timezone" when "endTimezone" is absent, so a pre-Phase-4 event
+            // document (which only ever had "timezone") still loads correctly with no server
+            // migration — it's interpreted as "start and end both in this one timezone."
+            val remoteEndTimezone = eventDoc.getString("endTimezone") ?: remoteTimezone
             val remoteStartDate = eventDoc.getString("startDate") ?: ""
             val remoteStartTime = eventDoc.getString("startTime")
             val remoteEndDate = eventDoc.getString("endDate") ?: ""
@@ -479,6 +484,7 @@ class SyncWorker(
                     category = remoteCategory,
                     location = remoteLocation,
                     startTimezone = remoteTimezone,
+                    endTimezone = remoteEndTimezone,
                     startDate = remoteStartDate,
                     startTime = remoteStartTime,
                     endDate = remoteEndDate,
@@ -501,6 +507,7 @@ class SyncWorker(
                         category = remoteCategory,
                         location = remoteLocation,
                         startTimezone = remoteTimezone,
+                        endTimezone = remoteEndTimezone,
                         startDate = remoteStartDate,
                         startTime = remoteStartTime,
                         endDate = remoteEndDate,

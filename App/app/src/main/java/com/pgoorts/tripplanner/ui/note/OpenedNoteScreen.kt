@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,6 +109,7 @@ fun OpenedNoteScreen(
                             unfocusedTextColor = White
                         ),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
@@ -160,6 +163,7 @@ fun OpenedNoteScreen(
                             },
                             readOnly = !canEdit,
                             placeholder = { Text("Start typing your note here...", color = Grey500) },
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             colors = tripTextFieldColors(),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -193,6 +197,7 @@ fun OpenedNoteScreen(
                                     value = newChecklistItemText,
                                     onValueChange = { newChecklistItemText = it },
                                     placeholder = { Text("Add new checklist item...", color = Grey500) },
+                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                                     colors = tripTextFieldColors(),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)

@@ -12,7 +12,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -25,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,8 +41,10 @@ import com.pgoorts.tripplanner.pkpass.PkpassContent
 import com.pgoorts.tripplanner.pkpass.PkpassParser
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.ui.trip.isEventInvalid
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.isoDateToEpochMillis
 import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +63,7 @@ fun OpenedEventScreen(
     onBack: () -> Unit,
     onNoteClick: (String) -> Unit,
     onReminderClick: (String) -> Unit,
+    onOpenTripSettings: (String) -> Unit,
     viewModel: OpenedEventViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -68,7 +74,8 @@ fun OpenedEventScreen(
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(EventCategory.OTHER) }
     var location by remember { mutableStateOf("") }
-    var timezone by remember { mutableStateOf("") }
+    var startTimezone by remember { mutableStateOf("") }
+    var endTimezone by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
@@ -79,6 +86,13 @@ fun OpenedEventScreen(
     var arrivalAirportCode by remember { mutableStateOf("") }
     var bookingNumber by remember { mutableStateOf("") }
 
+    // Bug 7: an event whose own dates fall outside its trip's current dates gets a fix-it banner.
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val currentEvent = uiState.event
+    val currentTrip = uiState.trip
+    val isInvalidEvent = currentEvent != null && currentTrip != null && isEventInvalid(currentEvent, currentTrip)
+
     // Dialog states
     var showAddNoteDialog by remember { mutableStateOf(false) }
     var showAddReminderDialog by remember { mutableStateOf(false) }
@@ -86,17 +100,26 @@ fun OpenedEventScreen(
     var pendingDeleteReminder by remember { mutableStateOf<ReminderEntity?>(null) }
 
     var isDropdownExpanded by remember { mutableStateOf(false) }
-    var isTimezoneExpanded by remember { mutableStateOf(false) }
-    var timezoneSearchQuery by remember { mutableStateOf("") }
+    var isStartTimezoneExpanded by remember { mutableStateOf(false) }
+    var isEndTimezoneExpanded by remember { mutableStateOf(false) }
+    var startTimezoneSearchQuery by remember { mutableStateOf("") }
+    var endTimezoneSearchQuery by remember { mutableStateOf("") }
 
     val commonTimezones = remember {
         ZoneId.getAvailableZoneIds().sorted()
     }
-    val filteredTimezones = remember(timezoneSearchQuery) {
-        if (timezoneSearchQuery.isBlank()) {
+    val filteredStartTimezones = remember(startTimezoneSearchQuery) {
+        if (startTimezoneSearchQuery.isBlank()) {
             commonTimezones.take(20)
         } else {
-            commonTimezones.filter { it.contains(timezoneSearchQuery, ignoreCase = true) }.take(20)
+            commonTimezones.filter { it.contains(startTimezoneSearchQuery, ignoreCase = true) }.take(20)
+        }
+    }
+    val filteredEndTimezones = remember(endTimezoneSearchQuery) {
+        if (endTimezoneSearchQuery.isBlank()) {
+            commonTimezones.take(20)
+        } else {
+            commonTimezones.filter { it.contains(endTimezoneSearchQuery, ignoreCase = true) }.take(20)
         }
     }
 
@@ -106,7 +129,8 @@ fun OpenedEventScreen(
             title = event.title
             category = event.category
             location = event.location ?: ""
-            timezone = event.startTimezone
+            startTimezone = event.startTimezone
+            endTimezone = event.endTimezone ?: event.startTimezone
             startDate = event.startDate
             endDate = event.endDate
             startTime = event.startTime ?: ""
@@ -140,7 +164,8 @@ fun OpenedEventScreen(
                                     title = title.trim(),
                                     category = category,
                                     location = location.trim().takeIf { it.isNotBlank() },
-                                    timezone = timezone.trim(),
+                                    startTimezone = startTimezone.trim(),
+                                    endTimezone = endTimezone.trim(),
                                     startDate = startDate.trim(),
                                     startTime = startTime.trim().takeIf { it.isNotBlank() },
                                     endDate = endDate.trim(),
@@ -173,12 +198,23 @@ fun OpenedEventScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (isInvalidEvent && currentTrip != null) {
+                    item {
+                        InvalidEventBanner(
+                            trip = currentTrip,
+                            onEditEventDates = { scope.launch { listState.animateScrollToItem(1) } },
+                            onEditTripDates = { onOpenTripSettings(currentTrip.id) }
+                        )
+                    }
+                }
+
                 // Form Section
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -189,6 +225,7 @@ fun OpenedEventScreen(
                             label = { Text("Title", color = Grey500) },
                             singleLine = true,
                             enabled = canEdit,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             colors = tripTextFieldColors(),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -242,6 +279,7 @@ fun OpenedEventScreen(
                                 label = { Text("Location", color = Grey500) },
                                 singleLine = true,
                                 enabled = canEdit,
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier.weight(1f)
                             )
@@ -273,34 +311,38 @@ fun OpenedEventScreen(
                             }
                         }
 
-                        // Timezone Picker
+                        // Timezone Pickers (start/end, per description_detail.txt §5)
+                        val timezoneFieldLabels = when (category) {
+                            EventCategory.FLIGHT -> "Departure timezone" to "Arrival timezone"
+                            else -> "Start timezone" to "End timezone"
+                        }
                         ExposedDropdownMenuBox(
-                            expanded = isTimezoneExpanded && canEdit,
-                            onExpandedChange = { if (canEdit) isTimezoneExpanded = it }
+                            expanded = isStartTimezoneExpanded && canEdit,
+                            onExpandedChange = { if (canEdit) isStartTimezoneExpanded = it }
                         ) {
                             OutlinedTextField(
-                                value = timezone,
+                                value = startTimezone,
                                 onValueChange = {
-                                    timezone = it
-                                    timezoneSearchQuery = it
+                                    startTimezone = it
+                                    startTimezoneSearchQuery = it
                                 },
                                 enabled = canEdit,
-                                label = { Text("Timezone", color = Grey500) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isTimezoneExpanded && canEdit) },
+                                label = { Text(timezoneFieldLabels.first, color = Grey500) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isStartTimezoneExpanded && canEdit) },
                                 colors = tripTextFieldColors(),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .menuAnchor()
                             )
                             ExposedDropdownMenu(
-                                expanded = isTimezoneExpanded,
-                                onDismissRequest = { isTimezoneExpanded = false },
+                                expanded = isStartTimezoneExpanded,
+                                onDismissRequest = { isStartTimezoneExpanded = false },
                                 modifier = Modifier.background(Navy700)
                             ) {
                                 // Search bar inside menu to filter
                                 OutlinedTextField(
-                                    value = timezoneSearchQuery,
-                                    onValueChange = { timezoneSearchQuery = it },
+                                    value = startTimezoneSearchQuery,
+                                    onValueChange = { startTimezoneSearchQuery = it },
                                     placeholder = { Text("Search timezone...", color = Grey500) },
                                     singleLine = true,
                                     colors = tripTextFieldColors(),
@@ -308,12 +350,57 @@ fun OpenedEventScreen(
                                         .fillMaxWidth()
                                         .padding(8.dp)
                                 )
-                                filteredTimezones.forEach { zone ->
+                                filteredStartTimezones.forEach { zone ->
                                     DropdownMenuItem(
                                         text = { Text(zone, color = White) },
                                         onClick = {
-                                            timezone = zone
-                                            isTimezoneExpanded = false
+                                            startTimezone = zone
+                                            isStartTimezoneExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        ExposedDropdownMenuBox(
+                            expanded = isEndTimezoneExpanded && canEdit,
+                            onExpandedChange = { if (canEdit) isEndTimezoneExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = endTimezone,
+                                onValueChange = {
+                                    endTimezone = it
+                                    endTimezoneSearchQuery = it
+                                },
+                                enabled = canEdit,
+                                label = { Text(timezoneFieldLabels.second, color = Grey500) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isEndTimezoneExpanded && canEdit) },
+                                colors = tripTextFieldColors(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = isEndTimezoneExpanded,
+                                onDismissRequest = { isEndTimezoneExpanded = false },
+                                modifier = Modifier.background(Navy700)
+                            ) {
+                                // Search bar inside menu to filter
+                                OutlinedTextField(
+                                    value = endTimezoneSearchQuery,
+                                    onValueChange = { endTimezoneSearchQuery = it },
+                                    placeholder = { Text("Search timezone...", color = Grey500) },
+                                    singleLine = true,
+                                    colors = tripTextFieldColors(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                )
+                                filteredEndTimezones.forEach { zone ->
+                                    DropdownMenuItem(
+                                        text = { Text(zone, color = White) },
+                                        onClick = {
+                                            endTimezone = zone
+                                            isEndTimezoneExpanded = false
                                         }
                                     )
                                 }
@@ -370,6 +457,7 @@ fun OpenedEventScreen(
                             colors = tripTextFieldColors(),
                             enabled = canEdit,
                             minLines = 3,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -498,12 +586,14 @@ fun OpenedEventScreen(
             onConfirm = { title, type, content, localAttachmentPath, id ->
                 viewModel.addNote(title, type, content, localAttachmentPath, id)
                 showAddNoteDialog = false
+                onNoteClick(id)
             }
         )
     }
 
     if (showAddReminderDialog) {
         AddReminderDialog(
+            defaultDateMillis = uiState.trip?.startDate?.let { isoDateToEpochMillis(it) },
             onDismiss = { showAddReminderDialog = false },
             onConfirm = { text, date, time ->
                 viewModel.addReminder(text, date, time)
@@ -528,6 +618,47 @@ fun OpenedEventScreen(
             onConfirm = { viewModel.deleteReminder(reminder); pendingDeleteReminder = null },
             onDismiss = { pendingDeleteReminder = null }
         )
+    }
+}
+
+/** Fix-it banner shown on an invalid event (Bug 7), matching designmockups/InvalidEvent.png. */
+@Composable
+private fun InvalidEventBanner(
+    trip: com.pgoorts.tripplanner.data.local.entity.TripEntity,
+    onEditEventDates: () -> Unit,
+    onEditTripDates: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ErrorRed.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(18.dp))
+            Column {
+                Text(
+                    "This event falls outside the trip's dates",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                )
+                Text(
+                    "The trip runs ${trip.startDate} to ${trip.endDate}.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = Grey300)
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 12.dp)) {
+            OutlinedButton(
+                onClick = onEditEventDates,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                modifier = Modifier.weight(1f)
+            ) { Text("Edit event dates", style = MaterialTheme.typography.labelMedium) }
+            OutlinedButton(
+                onClick = onEditTripDates,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Grey300),
+                modifier = Modifier.weight(1f)
+            ) { Text("Edit trip dates", style = MaterialTheme.typography.labelMedium) }
+        }
     }
 }
 
@@ -738,6 +869,7 @@ private fun AddNoteDialog(
                     value = title,
                     onValueChange = { title = it; error = null },
                     label = { Text("Title", color = Grey500) },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     colors = tripTextFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -845,7 +977,7 @@ private fun noteKindIcon(kind: NoteKind): ImageVector = when (kind) {
 }
 
 @Composable
-private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) -> Unit) {
+private fun AddReminderDialog(defaultDateMillis: Long? = null, onDismiss: () -> Unit, onConfirm: (String, String, String) -> Unit) {
     var text by remember { mutableStateOf("") }
     var date by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("") }
@@ -861,6 +993,7 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
                     value = text,
                     onValueChange = { text = it; error = null },
                     label = { Text("Reminder text", color = Grey500) },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     colors = tripTextFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -870,7 +1003,8 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
                         value = date,
                         onValueChange = { date = it; error = null },
                         colors = tripTextFieldColors(),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        defaultMillis = defaultDateMillis
                     )
                     TimePickerField(
                         label = "Time",

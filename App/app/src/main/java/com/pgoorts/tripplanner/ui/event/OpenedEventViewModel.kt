@@ -9,6 +9,7 @@ import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
+import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.data.local.entity.roleFor
 import com.pgoorts.tripplanner.data.repository.EventRepository
@@ -29,6 +30,7 @@ import javax.inject.Inject
 
 data class OpenedEventUiState(
     val event: EventEntity? = null,
+    val trip: TripEntity? = null,
     val notes: List<NoteEntity> = emptyList(),
     val reminders: List<ReminderEntity> = emptyList(),
     val currentUserRole: TripRole? = null,
@@ -50,23 +52,23 @@ class OpenedEventViewModel @Inject constructor(
 
     private val eventFlow = eventRepository.getEventById(eventId)
 
-    private val roleFlow = eventFlow.flatMapLatest { event ->
+    private val tripFlow = eventFlow.flatMapLatest { event ->
         val tripId = event?.tripId
-        if (tripId == null) {
-            flowOf(null)
-        } else {
-            tripRepository.getTripById(tripId).map { it?.roleFor(userSessionManager.userEmail) }
-        }
+        if (tripId == null) flowOf(null) else tripRepository.getTripById(tripId)
     }
+
+    private val roleFlow = tripFlow.map { it?.roleFor(userSessionManager.userEmail) }
 
     val uiState: StateFlow<OpenedEventUiState> = combine(
         eventFlow,
+        tripFlow,
         noteRepository.getNotesByEventId(eventId),
         reminderRepository.getRemindersByEventId(eventId),
         roleFlow
-    ) { event, notes, reminders, role ->
+    ) { event, trip, notes, reminders, role ->
         OpenedEventUiState(
             event = event,
+            trip = trip,
             notes = notes,
             reminders = reminders,
             currentUserRole = role,
@@ -82,7 +84,8 @@ class OpenedEventViewModel @Inject constructor(
         title: String,
         category: EventCategory,
         location: String?,
-        timezone: String,
+        startTimezone: String,
+        endTimezone: String,
         startDate: String,
         startTime: String?,
         endDate: String,
@@ -100,8 +103,8 @@ class OpenedEventViewModel @Inject constructor(
                     title = title,
                     category = category,
                     location = location,
-                    startTimezone = timezone,
-                    endTimezone = timezone,
+                    startTimezone = startTimezone,
+                    endTimezone = endTimezone,
                     startDate = startDate,
                     startTime = startTime,
                     endDate = endDate,

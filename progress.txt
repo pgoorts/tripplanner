@@ -457,9 +457,119 @@ check]:
 - Not run in-container per the standing note below — developer builds `./gradlew assembleDebug`
   outside the container.
 
-Not yet done — Block Verification (developer, outside container): confirm `assembleDebug` succeeds,
-install over an existing Phase-3 (schema v2) install and confirm no crash/data loss (migration ran,
-not a destructive fallback), confirm a fresh install also succeeds, and confirm no visible behavior
-change from the end of Phase 3.
+Block Verification not run in-container. Per developer correction ("Build happens at the end of a
+phase, proceed to block 2"): builds/on-device verification for this phase happen once at the end,
+not after each block — implementation continues block-by-block without pausing for a build each
+time. (Saved as a standing preference in memory for future phases too.)
 
-Note: Do not make builds. Everything is built outside the container.
+Block 2 (Quick Independent UI Fixes: Bugs 1-3) [CODE COMPLETE]:
+- Bug 1 (date picker defaults to trip start): `DatePickerField` gained `defaultMillis: Long? = null`,
+  used only when the field's own `value` is blank (`initialMillis ?: defaultMillis` in
+  `rememberDatePickerState`). Added a shared `isoDateToEpochMillis()` helper (also used to simplify
+  `DatePickerField`'s own existing `initialMillis` computation). Wired trip-start millis into:
+  `AddEventDialog`'s both date fields and `AddReminderDialog`'s date field (both copies, in
+  `OpenedTripScreen.kt` and `OpenedEventScreen.kt`). `OpenedEventScreen.kt`'s copy needed
+  `OpenedEventUiState` to expose the event's trip — added `trip: TripEntity?` there (new `tripFlow`
+  in `OpenedEventViewModel.kt`, `roleFlow` now derived from it instead of its own separate query;
+  `combine()` widened from 4 to 5 flows). This same `uiState.trip` is reused by Block 4's fix-it
+  banner, per the plan. Not applied to `AddTripDialog` (no trip yet) or any edit-form date field
+  (always has an existing value already, so the blank-field condition never fires there).
+- Bug 2 (auto-capitalize first letter): `TripTextField` (`OpenedTripScreen.kt`'s shared wrapper)
+  gained `capitalizeSentences: Boolean = true`, set `false` on its 4 structured-field call sites
+  (Flight number, Departure/Arrival airport code, Booking number) and its Email field
+  (`ShareTripDialog`). Every other free-text field across `HomeScreen.kt` (Destination),
+  `OpenedEventScreen.kt` (Title/Location/Description edit fields, its own Add Note dialog's Title,
+  its own Add Reminder dialog's text), `OpenedNoteScreen.kt` (title `TextField`, Text Block content,
+  new-checklist-item field), `OpenedReminderScreen.kt` (Reminder Description), and
+  `SettingsScreen.kt` (Template name, Items) got `KeyboardOptions(capitalization =
+  KeyboardCapitalization.Sentences)` added directly. Left plain (per description_detail.txt §3):
+  both note dialogs' URL field, `OpenedEventScreen.kt`'s Flight number/airport codes/Booking number
+  edit fields, `OpenedNoteScreen.kt`'s Link-URL edit field, `SettingsScreen.kt`'s Inner Circle email
+  field (Inner Circle turned out to be email-only — no separate name field exists).
+- Bug 3 (Add Note opens its editor immediately): one-line fix at both `AddNoteDialog` `onConfirm`
+  call sites (`OpenedTripScreen.kt`/`OpenedEventScreen.kt`) — `onNoteClick(id)` added after the
+  existing `viewModel.createNote(...)`/`addNote(...)` call, using the note's already-known
+  client-generated id. No ViewModel/repository change needed, confirming the plan's read that the
+  id is available synchronously.
+- Not built/run in-container per the above; developer verifies at end of phase.
+
+Block 3 (Per-Event Dual Timezones: Bugs 4-5) [CODE COMPLETE]:
+- Data layer: `EventRepository.createEvent`'s `timezone` param split into `startTimezone`/
+  `endTimezone` (both default "UTC"); `OpenedTripViewModel.createEvent` same split, passed through;
+  `OpenedEventViewModel.updateEvent`'s `timezone` param split the same way. `SyncWorker.kt`'s event
+  upload map gains `"endTimezone" to event.endTimezone` alongside the existing `"timezone"` key;
+  both download construction sites read a new `remoteEndTimezone = eventDoc.getString("endTimezone")
+  ?: remoteTimezone` (the pre-Phase-4-document fallback) and set both fields.
+- `AddEventDialog` (`OpenedTripScreen.kt`): single `timezone`/`showTimezonePicker` state replaced
+  with `startTimezone`/`endTimezone` + two independent `TimezonePickerDialog`-backed fields, both
+  seeded from the dialog's existing `initialTimezone` param (so Bug 5's trip/global default
+  resolution — unchanged — now seeds both). Labeled "Departure timezone"/"Arrival timezone" for
+  Flight, "Start timezone"/"End timezone" otherwise. `onConfirm`'s lambda gained the 12th param;
+  its call site in `OpenedTripScreen`'s main composable and `viewModel.createEvent(...)` updated to
+  match.
+- `OpenedEventScreen.kt`'s edit form: duplicated the inline `ExposedDropdownMenuBox` timezone
+  picker into two (`isStartTimezoneExpanded`/`isEndTimezoneExpanded`, separate search-query/
+  filtered-list state per field), same Flight-conditional labeling as the Add Event form, seeded
+  from `event.startTimezone`/`event.endTimezone ?: event.startTimezone` in the `LaunchedEffect`,
+  threaded into `viewModel.updateEvent(...)`'s new two-param call.
+- Verified with a repo-wide grep that no stale single-`timezone` reference remains anywhere the
+  rename/split touched.
+- Not built/run in-container; developer verifies at end of phase (per the standing note above).
+
+Block 4 (Trip Settings Screen — Editable Dates & Invalid-Event Flagging: Bug 7) [CODE COMPLETE]:
+- New `ui/trip/TripSettingsScreen.kt`, modeled on `SettingsScreen.kt`'s full-screen Scaffold/
+  TopAppBar/back-arrow pattern, reusing `OpenedTripViewModel` (same `tripId`-scoped `hiltViewModel()`
+  pattern `OpenedTripScreen` already uses). New `Screen.TripSettings` route
+  (`"tripSettings/{tripId}"`) in `MainActivity.kt`. The old `TripSettingsDialog` AlertDialog and its
+  `showTripSettingsDialog` state removed entirely from `OpenedTripScreen.kt`; its default-timezone
+  content moved into the new screen unchanged (same `onSetTimezone`/`onClearOverride` calls). The
+  gear icon now takes a new `onTripSettingsClick: () -> Unit` screen param, wired in
+  `MainActivity.kt` to navigate. Cover photo section stubbed ("Coming soon.") for Block 5.
+- Editable trip dates: two `DatePickerField`s save immediately (matching the app's existing
+  immediate-commit settings pattern, no separate Save button) via a new
+  `OpenedTripViewModel.updateTripDates(startDate, endDate)`, with inline start≤end validation
+  (duplicated from `HomeScreen.kt`'s private `validateTripInput`, which isn't cross-file
+  accessible).
+- Invalid-event detection: new top-level `isEventInvalid(event, trip): Boolean` in
+  `OpenedTripViewModel.kt` (pure `LocalDate` comparison, not stored). `ItineraryEvent` gained
+  `isInvalid`, set in `buildItinerary`. **Day-range fix** (flagged in the plan's own notes):
+  `buildItinerary`'s day range extended from strictly `trip.startDate..trip.endDate` to the union
+  of that range and any event's own out-of-range dates, so such an event still gets a day slot to
+  render under instead of being unreachable.
+- Invalid badge: `EventCard` (`OpenedTripScreen.kt`) shows an "Outside trip dates" pill (ErrorRed,
+  warning icon) alongside the existing category/flight badge when `isInvalid`.
+- Fix-it banner: `OpenedEventUiState.trip` (added in Block 2) plus the new `isEventInvalid` drive a
+  new `InvalidEventBanner` composable in `OpenedEventScreen.kt`, shown as the first `LazyColumn`
+  item when the open event is invalid. "Edit event dates" scrolls the list to the form section
+  (`animateScrollToItem`, dates are near its top); "Edit trip dates" navigates to the new Trip
+  Settings screen via a new `onOpenTripSettings: (String) -> Unit` screen param (wired in
+  `MainActivity.kt`).
+- Narrowing trip dates needs no extra code: `updateTripDates` only ever touches the trip row, and
+  the invalid flag is derived, not stored — confirmed by design, not a separate step.
+- Verified with a repo-wide grep that every call site of the changed/new functions
+  (`OpenedTripScreen`, `OpenedEventScreen`, `isEventInvalid`, `updateTripDates`) is consistent.
+- Not built/run in-container; developer verifies at end of phase.
+
+In-container release build attempted at developer's request (overriding the "builds happen outside
+the container" default for a one-off check). First `./gradlew assembleRelease` attempt (12m33s)
+caught a real bug: `TripSettingsScreen.kt`'s new `tripSettingsFieldColors()` helper called
+`OutlinedTextFieldDefaults.colors(...)` (a @Composable API) without a `@Composable` annotation on
+itself — fixed (matches the `@Composable private fun tripTextFieldColors()` pattern every other
+screen in this codebase already uses for the same helper). Second attempt (23m12s) got all the way
+through compilation, dexing, and release-signing validation — no further code errors — but failed
+at the final `:app:packageRelease` task with "Cannot access output property 'incrementalFolder' ...
+Could not read directory path ... Accessing unreadable inputs or outputs is not supported." The
+directory in question is a perfectly normal, readable directory by `ls`/`stat`. A third attempt with
+`--no-watch-fs` (targeting Gradle's file-system watcher as the likely culprit) failed the same way
+but on a *different* task/directory (`generateReleaseBuildConfig`'s `sourceOutputDir`, this time) —
+confirming this is a nondeterministic, container-level Gradle issue (its output-tracking can't
+reliably watch/read this environment's filesystem), not a code problem. This directly matches the
+"gradle failed when attempted inside this container (environment/tooling issue)" note from Phase 3
+Block 5 — now reproduced and diagnosed further, still not resolved. No release APK produced (the
+one sitting in `app/build/outputs/apk/release/` is stale, dated Aug 26, from an earlier session/
+build outside this container). Per the developer ("no need to build after that"), not chasing this
+further — proceeding to Block 5 without another in-container build.
+
+Not yet started: Block 5 (trip cover images — Places/Unsplash/manual override/illustration
+fallback; the biggest remaining block), Block 6 (Drive picker), Block 7 (File note type), Block 8
+(pkpass picker bug reproduce/fix).

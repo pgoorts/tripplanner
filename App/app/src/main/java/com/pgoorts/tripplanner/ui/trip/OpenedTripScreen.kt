@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +50,7 @@ import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.isoDateToEpochMillis
 import com.pgoorts.tripplanner.ui.components.TimePickerField
 import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
 import com.pgoorts.tripplanner.ui.theme.*
@@ -71,6 +74,7 @@ fun OpenedTripScreen(
     onEventClick: (String) -> Unit,
     onNoteClick: (String) -> Unit,
     onReminderClick: (String) -> Unit,
+    onTripSettingsClick: () -> Unit,
     viewModel: OpenedTripViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -81,11 +85,13 @@ fun OpenedTripScreen(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    // Bug 1: trip-scoped Add dialogs default a blank date field's picker to the trip's start date.
+    val tripStartMillis = uiState.trip?.startDate?.let { isoDateToEpochMillis(it) }
+
     var showAddEventDialog by remember { mutableStateOf(false) }
     var showAddNoteDialog by remember { mutableStateOf(false) }
     var showAddReminderDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
-    var showTripSettingsDialog by remember { mutableStateOf(false) }
 
     val isViewer = uiState.currentUserRole == TripRole.VIEWER
     val canEdit = !isViewer
@@ -106,7 +112,7 @@ fun OpenedTripScreen(
                     }
                     context.startActivity(Intent.createChooser(sendIntent, "Share Trip"))
                 },
-                onTripSettingsClick = { showTripSettingsDialog = true }
+                onTripSettingsClick = onTripSettingsClick
             )
         },
         floatingActionButton = {
@@ -177,14 +183,16 @@ fun OpenedTripScreen(
     if (showAddEventDialog) {
         AddEventDialog(
             initialTimezone = uiState.trip?.defaultTimezone ?: globalDefaultTimezone ?: "UTC",
+            defaultDateMillis = tripStartMillis,
             onDismiss = { showAddEventDialog = false },
-            onConfirm = { title, category, startDate, endDate, startTime, endTime, timezone,
+            onConfirm = { title, category, startDate, endDate, startTime, endTime, startTimezone, endTimezone,
                           flightNumber, departureAirportCode, arrivalAirportCode, bookingNumber ->
                 viewModel.createEvent(
                     title = title, category = category,
                     startDate = startDate, endDate = endDate,
                     startTime = startTime, endTime = endTime,
-                    timezone = timezone,
+                    startTimezone = startTimezone,
+                    endTimezone = endTimezone,
                     flightNumber = flightNumber,
                     departureAirportCode = departureAirportCode,
                     arrivalAirportCode = arrivalAirportCode,
@@ -195,16 +203,6 @@ fun OpenedTripScreen(
         )
     }
 
-    if (showTripSettingsDialog) {
-        TripSettingsDialog(
-            trip = uiState.trip,
-            globalDefaultTimezone = globalDefaultTimezone,
-            onDismiss = { showTripSettingsDialog = false },
-            onSetTimezone = { viewModel.setTripDefaultTimezone(it) },
-            onClearOverride = { viewModel.setTripDefaultTimezone(null) }
-        )
-    }
-
     if (showAddNoteDialog) {
         AddNoteDialog(
             tripId = tripId,
@@ -212,12 +210,14 @@ fun OpenedTripScreen(
             onConfirm = { title, type, content, localAttachmentPath, id ->
                 viewModel.createNote(title = title, type = type, content = content, localAttachmentPath = localAttachmentPath, id = id)
                 showAddNoteDialog = false
+                onNoteClick(id)
             }
         )
     }
 
     if (showAddReminderDialog) {
         AddReminderDialog(
+            defaultDateMillis = tripStartMillis,
             onDismiss = { showAddReminderDialog = false },
             onConfirm = { text, date, time ->
                 viewModel.createReminder(text = text, date = date, time = time)
@@ -601,6 +601,20 @@ private fun EventCard(
                         }
                     }
 
+                    if (itineraryEvent.isInvalid) {
+                        Spacer(Modifier.height(3.dp))
+                        Surface(shape = RoundedCornerShape(20.dp), color = ErrorRed.copy(alpha = 0.15f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Filled.Warning, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(11.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Outside trip dates", style = MaterialTheme.typography.labelSmall, color = ErrorRed)
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(3.dp))
 
                     if (event.startTime != null) {
@@ -883,8 +897,9 @@ private fun EmptyTabState(icon: ImageVector, message: String, hint: String) {
 @Composable
 private fun AddEventDialog(
     initialTimezone: String,
+    defaultDateMillis: Long? = null,
     onDismiss: () -> Unit,
-    onConfirm: (String, EventCategory, String, String, String?, String?, String, String?, String?, String?, String?) -> Unit
+    onConfirm: (String, EventCategory, String, String, String?, String?, String, String, String?, String?, String?, String?) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(EventCategory.OTHER) }
@@ -892,9 +907,11 @@ private fun AddEventDialog(
     var endDate by remember { mutableStateOf("") }
     var startTime by remember { mutableStateOf("") }
     var endTime by remember { mutableStateOf("") }
-    var timezone by remember { mutableStateOf(initialTimezone) }
+    var startTimezone by remember { mutableStateOf(initialTimezone) }
+    var endTimezone by remember { mutableStateOf(initialTimezone) }
     var categoryExpanded by remember { mutableStateOf(false) }
-    var showTimezonePicker by remember { mutableStateOf(false) }
+    var showStartTimezonePicker by remember { mutableStateOf(false) }
+    var showEndTimezonePicker by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var flightNumber by remember { mutableStateOf("") }
     var departureAirportCode by remember { mutableStateOf("") }
@@ -945,37 +962,54 @@ private fun AddEventDialog(
                     else -> "Start Time" to "End Time"
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DatePickerField(label = dateLabels.first, value = startDate, onValueChange = { startDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
-                    DatePickerField(label = dateLabels.second, value = endDate, onValueChange = { endDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    DatePickerField(label = dateLabels.first, value = startDate, onValueChange = { startDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f), defaultMillis = defaultDateMillis)
+                    DatePickerField(label = dateLabels.second, value = endDate, onValueChange = { endDate = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f), defaultMillis = defaultDateMillis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TimePickerField(label = timeLabels.first, value = startTime, onValueChange = { startTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                     TimePickerField(label = timeLabels.second, value = endTime, onValueChange = { endTime = it; error = null }, allowClear = true, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
 
+                val timezoneLabels = when (category) {
+                    EventCategory.FLIGHT -> "Departure timezone" to "Arrival timezone"
+                    else -> "Start timezone" to "End timezone"
+                }
                 OutlinedTextField(
-                    value = timezone,
+                    value = startTimezone,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Timezone", color = Grey500) },
+                    label = { Text(timezoneLabels.first, color = Grey500) },
                     trailingIcon = {
                         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
                     },
                     colors = tripTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showTimezonePicker = true }
+                        .clickable { showStartTimezonePicker = true }
+                )
+                OutlinedTextField(
+                    value = endTimezone,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(timezoneLabels.second, color = Grey500) },
+                    trailingIcon = {
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
+                    },
+                    colors = tripTextFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showEndTimezonePicker = true }
                 )
 
                 if (category == EventCategory.FLIGHT) {
                     Text("Flight details", style = MaterialTheme.typography.labelMedium, color = Grey500)
-                    TripTextField(value = flightNumber, onValueChange = { flightNumber = it }, label = "Flight number · optional")
+                    TripTextField(value = flightNumber, onValueChange = { flightNumber = it }, label = "Flight number · optional", capitalizeSentences = false)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TripTextField(value = departureAirportCode, onValueChange = { departureAirportCode = it }, label = "Departure airport · optional", modifier = Modifier.weight(1f))
-                        TripTextField(value = arrivalAirportCode, onValueChange = { arrivalAirportCode = it }, label = "Arrival airport · optional", modifier = Modifier.weight(1f))
+                        TripTextField(value = departureAirportCode, onValueChange = { departureAirportCode = it }, label = "Departure airport · optional", modifier = Modifier.weight(1f), capitalizeSentences = false)
+                        TripTextField(value = arrivalAirportCode, onValueChange = { arrivalAirportCode = it }, label = "Arrival airport · optional", modifier = Modifier.weight(1f), capitalizeSentences = false)
                     }
                 } else if (category == EventCategory.LODGING) {
-                    TripTextField(value = bookingNumber, onValueChange = { bookingNumber = it }, label = "Booking number · optional")
+                    TripTextField(value = bookingNumber, onValueChange = { bookingNumber = it }, label = "Booking number · optional", capitalizeSentences = false)
                 }
 
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
@@ -991,7 +1025,8 @@ private fun AddEventDialog(
                         startDate.trim(), endDate.trim(),
                         startTime.trim().takeIf { it.isNotBlank() },
                         endTime.trim().takeIf { it.isNotBlank() },
-                        timezone.trim(),
+                        startTimezone.trim(),
+                        endTimezone.trim(),
                         flightNumber.trim().takeIf { it.isNotBlank() },
                         departureAirportCode.trim().takeIf { it.isNotBlank() },
                         arrivalAirportCode.trim().takeIf { it.isNotBlank() },
@@ -1004,10 +1039,16 @@ private fun AddEventDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = Grey300) } }
     )
 
-    if (showTimezonePicker) {
+    if (showStartTimezonePicker) {
         TimezonePickerDialog(
-            onDismiss = { showTimezonePicker = false },
-            onSelect = { zone -> timezone = zone; showTimezonePicker = false }
+            onDismiss = { showStartTimezonePicker = false },
+            onSelect = { zone -> startTimezone = zone; showStartTimezonePicker = false }
+        )
+    }
+    if (showEndTimezonePicker) {
+        TimezonePickerDialog(
+            onDismiss = { showEndTimezonePicker = false },
+            onSelect = { zone -> endTimezone = zone; showEndTimezonePicker = false }
         )
     }
 }
@@ -1188,7 +1229,7 @@ private fun noteKindIcon(kind: NoteKind): ImageVector = when (kind) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String, String) -> Unit) {
+private fun AddReminderDialog(defaultDateMillis: Long? = null, onDismiss: () -> Unit, onConfirm: (String, String, String) -> Unit) {
     var text by remember { mutableStateOf("") }
     var date by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("") }
@@ -1202,7 +1243,7 @@ private fun AddReminderDialog(onDismiss: () -> Unit, onConfirm: (String, String,
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 TripTextField(value = text, onValueChange = { text = it; error = null }, label = "Reminder text")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DatePickerField(label = "Date", value = date, onValueChange = { date = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
+                    DatePickerField(label = "Date", value = date, onValueChange = { date = it; error = null }, colors = tripTextFieldColors(), modifier = Modifier.weight(1f), defaultMillis = defaultDateMillis)
                     TimePickerField(label = "Time", value = time, onValueChange = { time = it; error = null }, allowClear = false, colors = tripTextFieldColors(), modifier = Modifier.weight(1f))
                 }
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
@@ -1242,7 +1283,7 @@ private fun ShareTripDialog(
         title = { Text("Share Trip", style = MaterialTheme.typography.titleLarge, color = White) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TripTextField(value = email, onValueChange = { email = it; error = null }, label = "Email address")
+                TripTextField(value = email, onValueChange = { email = it; error = null }, label = "Email address", capitalizeSentences = false)
 
                 if (innerCircle.isNotEmpty()) {
                     Text("From Inner Circle", style = MaterialTheme.typography.labelMedium, color = Grey500)
@@ -1327,95 +1368,9 @@ private fun RoleChip(label: String, selected: Boolean, onClick: () -> Unit, modi
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Trip Settings Dialog
-// ──────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TripSettingsDialog(
-    trip: TripEntity?,
-    globalDefaultTimezone: String?,
-    onDismiss: () -> Unit,
-    onSetTimezone: (String) -> Unit,
-    onClearOverride: () -> Unit
-) {
-    var showTimezonePicker by remember { mutableStateOf(false) }
-    val override = trip?.defaultTimezone
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Navy800,
-        title = { Text("Trip Settings", style = MaterialTheme.typography.titleLarge, color = White) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "This trip's default timezone",
-                    style = MaterialTheme.typography.titleSmall.copy(color = Teal300, fontWeight = FontWeight.Bold)
-                )
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showTimezonePicker = true },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Navy700)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Teal300.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Public, contentDescription = null, tint = Teal300, modifier = Modifier.size(18.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Overrides your global default for events in this trip",
-                                style = MaterialTheme.typography.bodySmall.copy(color = Grey500)
-                            )
-                            Text(
-                                override ?: (globalDefaultTimezone?.let { "Using global default: $it" } ?: "Not set"),
-                                style = MaterialTheme.typography.bodyMedium.copy(color = White, fontWeight = FontWeight.SemiBold)
-                            )
-                        }
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500, modifier = Modifier.size(18.dp))
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Filled.Info, contentDescription = null, tint = Grey500, modifier = Modifier.size(14.dp))
-                    Text(
-                        "Falls back to your global default timezone (Settings → Preferences) when this is unset.",
-                        style = MaterialTheme.typography.bodySmall.copy(color = Grey500)
-                    )
-                }
-                if (override != null) {
-                    Text(
-                        "Clear override",
-                        style = MaterialTheme.typography.labelMedium.copy(color = Teal300, fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.clickable { onClearOverride() }
-                    )
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close", color = Grey300) } }
-    )
-
-    if (showTimezonePicker) {
-        TimezonePickerDialog(
-            onDismiss = { showTimezonePicker = false },
-            onSelect = { zone -> onSetTimezone(zone); showTimezonePicker = false }
-        )
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
 // Shared helpers & utility composables
 // ──────────────────────────────────────────────────────────────────────────────
+// (Trip Settings moved from a dialog here to a full screen — see TripSettingsScreen.kt.)
 
 @Composable
 private fun TripTextField(
@@ -1423,7 +1378,8 @@ private fun TripTextField(
     onValueChange: (String) -> Unit,
     label: String,
     hint: String = "",
-    modifier: Modifier = Modifier.fillMaxWidth()
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    capitalizeSentences: Boolean = true
 ) {
     OutlinedTextField(
         value = value,
@@ -1431,6 +1387,11 @@ private fun TripTextField(
         label = { Text(label, color = Grey500) },
         placeholder = if (hint.isNotBlank()) ({ Text(hint, color = Grey700) }) else null,
         singleLine = true,
+        keyboardOptions = if (capitalizeSentences) {
+            KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+        } else {
+            KeyboardOptions.Default
+        },
         colors = tripTextFieldColors(),
         modifier = modifier
     )

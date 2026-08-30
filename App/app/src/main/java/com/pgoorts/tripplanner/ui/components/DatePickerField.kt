@@ -27,11 +27,26 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
+/** Parses an ISO ("YYYY-MM-DD") date string to UTC start-of-day epoch millis, or null if invalid. */
+fun isoDateToEpochMillis(date: String): Long? = try {
+    LocalDate.parse(date.trim(), DateTimeFormatter.ISO_LOCAL_DATE)
+        .atStartOfDay(ZoneOffset.UTC)
+        .toInstant()
+        .toEpochMilli()
+} catch (e: Exception) {
+    null
+}
+
 /**
  * A read-only text field that opens a Material3 date picker dialog when tapped.
  *
  * The [value] and [onValueChange] contract stays a plain ISO ("YYYY-MM-DD") string, so this is a
  * drop-in replacement for a free-text date [OutlinedTextField].
+ *
+ * [defaultMillis], per description_detail.txt §2 (Bug 1), only ever applies when [value] is blank
+ * — a trip-scoped Add dialog passes its trip's start date so the picker opens pre-scrolled there
+ * instead of today's date; it's never a hard bound, and editing an existing value is unaffected
+ * since [value] itself always wins when non-blank.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,7 +58,8 @@ fun DatePickerField(
     enabled: Boolean = true,
     isError: Boolean = false,
     supportingText: (@Composable () -> Unit)? = null,
-    colors: TextFieldColors = OutlinedTextFieldDefaults.colors()
+    colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
+    defaultMillis: Long? = null
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -74,21 +90,8 @@ fun DatePickerField(
     }
 
     if (showDialog) {
-        val initialMillis = value.trim().let { raw ->
-            if (raw.isBlank()) {
-                null
-            } else {
-                try {
-                    LocalDate.parse(raw, DateTimeFormatter.ISO_LOCAL_DATE)
-                        .atStartOfDay(ZoneOffset.UTC)
-                        .toInstant()
-                        .toEpochMilli()
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        }
-        val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        val initialMillis = value.trim().takeIf { it.isNotBlank() }?.let { isoDateToEpochMillis(it) }
+        val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis ?: defaultMillis)
 
         DatePickerDialog(
             onDismissRequest = { showDialog = false },
