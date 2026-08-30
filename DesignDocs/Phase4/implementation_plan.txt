@@ -1,0 +1,488 @@
+TripPlanner Phase 4 Implementation Plan: Bug Fixes & Small Extensions
+==========================================================================
+
+This document outlines the step-by-step implementation plan for Phase 4. The plan is divided
+into 8 blocks. Each block builds on the previous ones and ends with a concrete verification step.
+Each step is designed to be self-contained and descriptive enough to allow development to pause
+and resume seamlessly with only the design documents and code as context.
+
+Refer to the following files for specification details:
+- Phase description: description_detail.txt
+- Tech stack: techstack.txt
+- Database & sync design: datastructure.txt
+- Mockups: designmockups/
+
+Blocks are ordered by dependency (schema first) rather than description.txt's original item order.
+Each block still corresponds to one or two of that list's 10 items, so the phase's own framing
+("fix them one at a time, each independently shippable") is preserved at block granularity, except
+where three genuinely trivial, unrelated fixes are bundled into one block (Block 2) for efficiency.
+
+Note: per progress.txt, builds are not run inside this environment — "Block Verification" steps
+that mention `./gradlew` are run by the developer outside the container, same as every prior phase.
+
+---
+
+Notes on Decisions Made While Writing This Plan
+====================================================
+Researching the actual source (not just the design docs) surfaced a few things worth flagging
+before implementation starts, since each shapes a specific step below:
+
+1.  **`trip.defaultTimezone` never actually syncs.** It's a real Room column since Phase 3 and the
+    single-device precedence logic works, but `SyncWorker.kt`'s trip upload map and download
+    parsing never included it — a trip-level timezone override set on one device is invisible on
+    a collaborator's second device. Not one of description.txt's 10 items, but Block 5 (trip cover
+    photos) already has to edit that exact same trip upload/download map for two new fields, so
+    this plan fixes it there at near-zero extra cost (Block 5, Step 5.5) rather than leaving it.
+2.  **The itinerary's day range is bounded strictly by the trip's own dates.** `buildItinerary()`
+    only ever generates day slots between `trip.startDate` and `trip.endDate`, so an event entirely
+    outside that range (which Bug 1 explicitly allows creating) would never get a day slot to
+    render under — it'd be permanently unreachable in the UI, since there's no other event list.
+    Block 4 (Step 4.3) extends the day range to also cover such events' own dates so the
+    invalid-flagging feature this phase adds is actually reachable. Flagged in case the developer
+    would rather see out-of-range events grouped in a separate section instead of inline extra days
+    — either is a small change from the other at this point in the plan.
+3.  **No event field is ever converted for display by timezone today**, including the single
+    existing `timezone` column — times render exactly as typed, with no `ZoneId`-based conversion
+    anywhere in the UI. Block 3 (dual timezone) is scoped accordingly: two independently
+    editable/stored/synced fields, not new timezone-conversion display logic that doesn't exist for
+    any event field today. If real cross-timezone display conversion is wanted, that's a separate,
+    larger ask than description_detail.txt §5 described — flagged rather than silently built or
+    silently skipped.
+
+---
+
+Block 1: Build Environment, New Dependency & Schema Scaffolding
+======================================================================
+Goal: Land every additive, non-behavior-changing groundwork piece (the one new dependency, every
+new/renamed schema column, the Room migration, and the File note type's manifest plumbing) before
+any feature UI touches them, so later blocks build on a known-good, already-migrating baseline —
+same approach Phase 3's Block 1 used.
+
+Step 1.1: Baseline build verification
+- Developer confirms the app still builds and installs cleanly on the current `main` (post Phase 3,
+  including Block 5's pkpass work) before any Phase 4 change lands, via `./gradlew assembleDebug`
+  from `App/`, outside this container.
+
+Step 1.2: Add new dependency
+- In `App/app/build.gradle.kts`, add `com.squareup.okhttp3:okhttp` (latest stable at implementation
+  time), per techstack.txt §6/§11 — used only by Block 5's Places/Unsplash calls.
+
+Step 1.3: Additive schema changes
+- `EventEntity` (`data/local/entity/EventEntity.kt`): rename the `timezone: String` field to
+  `startTimezone: String` with `@ColumnInfo(name = "timezone")` (same physical column, per
+  datastructure.txt §1 — no SQL needed for this half); add a new nullable `endTimezone: String?`.
+- `TripEntity` (`data/local/entity/TripEntity.kt`): add nullable `coverPhotoStoragePath: String?`,
+  `coverPhotoSource: String?`, and local-only `localCoverPhotoPath: String?`.
+- `NoteType` (`data/local/entity/NoteType.kt`): add `FILE` to the enum.
+- `NoteEntity` (`data/local/entity/NoteEntity.kt`): broaden `localAttachmentPath`'s comment from
+  "Local-only; PKPASS notes only" to cover `FILE` notes too (no new column — same field, reused).
+- `AppDatabase.kt`: bump `version` to `3`; add `Migration(2, 3)`:
+  ```sql
+  ALTER TABLE events ADD COLUMN endTimezone TEXT;
+  UPDATE events SET endTimezone = timezone;
+  ALTER TABLE trips  ADD COLUMN coverPhotoStoragePath TEXT;
+  ALTER TABLE trips  ADD COLUMN coverPhotoSource TEXT;
+  ALTER TABLE trips  ADD COLUMN localCoverPhotoPath TEXT;
+  ```
+  (No SQL for `events.timezone` → `startTimezone`, or for `notes`/`FILE` — see datastructure.txt
+  §7.) Register `MIGRATION_2_3` in `DatabaseModule.kt`'s `.addMigrations(...)` call alongside the
+  existing `MIGRATION_1_2`.
+- None of these fields are read or written by any UI yet in this block — this step only makes the
+  schema shape match datastructure.txt so later blocks don't also need a migration.
+
+Step 1.4: File note plumbing (unused until Block 7)
+- Add a `<provider>` entry (`androidx.core.content.FileProvider`, authority
+  `${applicationId}.fileprovider`) to `AndroidManifest.xml`, plus a new `res/xml/file_paths.xml`
+  declaring the app-internal files directory — per techstack.txt §9. `androidx.core` is already a
+  dependency; no Gradle change needed. Not referenced by any code yet.
+
+Step 1.5: Cover-photo API key scaffolding (unused until Block 5)
+- In `App/app/build.gradle.kts`, enable `buildFeatures { buildConfig = true }` and add two
+  `buildConfigField("String", "PLACES_API_KEY", "\"...\"")` / `"UNSPLASH_ACCESS_KEY"` entries read
+  from `App/local.properties` (gitignored, same handling as the existing `keystore.properties`
+  pattern already in this file), defaulting to an empty string when the property is absent so the
+  app still builds without the developer's keys configured yet. Document in this step's output that
+  the developer needs to provision both (a Google Cloud API key with Places API (New) enabled and
+  billing configured, and a free-tier Unsplash Access Key) before Block 5's fetch will do anything.
+
+Step 1.6: Block Verification
+- `./gradlew assembleDebug` succeeds (developer, outside this container).
+- Install over an existing Phase-3 install (schema v2 with real data) and confirm the app opens
+  without crashing or losing data — the migration ran, not a destructive fallback.
+- A fresh install also succeeds (Room creates the v3 schema directly).
+- No visible behavior change yet: the app looks and functions exactly as it did at the end of
+  Phase 3.
+
+---
+
+Block 2: Quick Independent UI Fixes (Bugs 1–3)
+====================================================
+Goal: Three small, independent, low-risk fixes bundled into one block for efficiency — none touch
+schema or sync, per description_detail.txt §2–4.
+
+Step 2.1: Date pickers default to the trip's start date (Bug 1)
+- `DatePickerField.kt` gains an optional `defaultMillis: Long? = null` param; the picker's
+  `rememberDatePickerState(initialSelectedDateMillis = ...)` uses the field's own current value
+  when non-blank (today's existing behavior, unchanged), else falls back to `defaultMillis`.
+- At each trip-scoped **Add** dialog call site, compute the trip's start-of-day UTC epoch millis
+  (same `LocalDate.parse(...).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()` conversion
+  `DatePickerField` already does internally) and pass it as `defaultMillis`:
+  * `AddEventDialog` (`OpenedTripScreen.kt`): both Start/End (or Departure/Arrival, or
+    Check-in/Check-out) `DatePickerField` calls.
+  * `AddReminderDialog` (both copies — `OpenedTripScreen.kt` and `OpenedEventScreen.kt`): the
+    single Date field. `OpenedEventScreen.kt`'s copy needs the trip's `startDate`, which isn't
+    exposed on `OpenedEventUiState` yet — add `trip: TripEntity?` there now (via
+    `tripRepository.getTripById(event.tripId)`, `flatMapLatest` off `eventFlow`, mirroring the
+    existing `roleFlow` pattern); Block 4 (Step 4.5) reuses this same field for the fix-it banner.
+- **Not applied**: `AddTripDialog` (`HomeScreen.kt` — no trip yet to default from, per
+  description_detail.txt §2) and any `DatePickerField` in an **edit** form (`OpenedEventScreen.kt`'s
+  edit-form dates always have the event's own existing value, so the "field doesn't already hold a
+  value" condition never fires there — no code change needed, just confirmed in verification).
+
+Step 2.2: Auto-capitalize first letter (Bug 2)
+- `TripTextField` (`OpenedTripScreen.kt`, the shared wrapper used 9 times in that file) gains a
+  `capitalizeSentences: Boolean = true` param applying
+  `KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)` when true. Its 4 structured-
+  field call sites (Flight number, Departure/Arrival airport code, Booking number — in both
+  `AddEventDialog` and, once Block 3 adds edit-form parity, nowhere else since those are Phase-3
+  fields already on `OpenedEventScreen.kt`'s raw `OutlinedTextField`s, not `TripTextField`) pass
+  `capitalizeSentences = false`.
+- Every other free-text field gets the same `KeyboardOptions` added directly (all raw
+  `OutlinedTextField`s, since `TripTextField` is only used in `OpenedTripScreen.kt`):
+  * **Include**: `AddTripDialog`'s Destination (`HomeScreen.kt`); `OpenedEventScreen.kt`'s Title,
+    Location, Description edit fields; `OpenedNoteScreen.kt`'s title edit, Text Block content,
+    Checklist item text fields; `OpenedReminderScreen.kt`'s reminder-text edit field;
+    `SettingsScreen.kt`'s Inner Circle contact **name** field, Packing Template title/item text
+    fields.
+  * **Exclude** (leave plain, per description_detail.txt §3): `AddNoteDialog`'s pasted URL field
+    (both copies); `OpenedEventScreen.kt`'s Flight number/Departure airport code/Arrival airport
+    code/Booking number edit fields; `ShareTripDialog`'s and `SettingsScreen.kt`'s Inner Circle
+    **email** fields; Block 6/7's new Drive-URI/File-path-adjacent fields (none of which are
+    free-text prose anyway).
+
+Step 2.3: Add Note opens its editor immediately (Bug 3)
+- `OpenedTripScreen.kt`: in `AddNoteDialog`'s `onConfirm` wiring (where
+  `viewModel.createNote(...)` is called and `showAddNoteDialog = false`), also call `onNoteClick(id)`
+  — the note's `id` is already the client-generated UUID passed through `onConfirm`'s last
+  parameter (set in `AddNoteDialog` before the note even exists, per Phase 3's pkpass-storage-path
+  pattern), so this needs no ViewModel/repository change — the id is known synchronously.
+- `OpenedEventScreen.kt`: identical fix in its own private `AddNoteDialog`'s `onConfirm` wiring
+  (`viewModel.addNote(...)` + `onNoteClick(id)`, `onNoteClick` already a screen param).
+- Applies uniformly to every `NoteKind` (Text Block, Checklist, Link, Pass, and Block 7's later
+  File) since the id is generated the same way regardless of kind.
+
+Step 2.4: Block Verification
+- Create a trip with dates a few months out; open Add Event and Add Reminder from it — confirm
+  every date field opens pre-scrolled to the trip's start date. Open Edit on an existing event —
+  confirm its own dates still show first, unaffected.
+- Type into title/destination/description/checklist-item/reminder-text/contact-name fields —
+  confirm the first letter capitalizes automatically and can be overridden by retyping. Confirm
+  Flight number, airport codes, Booking number, the note URL field, and email fields do NOT
+  auto-capitalize.
+- Add a Text Block note, a Checklist note, and a Link note (Pass — Block 8 handles verifying that
+  kind specifically) from both a trip's Notes tab and an event's linked notes — confirm each
+  navigates straight to its Opened Note screen after tapping Add.
+
+---
+
+Block 3: Per-Event Dual Timezones (Bugs 4–5)
+====================================================
+Goal: Give every event independently editable start/end timezones, per description_detail.txt
+§5–6. (Bug 5 — default-timezone resolution — needs no new logic; see Step 3.4.)
+
+Step 3.1: Data layer — split the field
+- `EventRepository.createEvent()`: replace the single `timezone: String = "UTC"` param with
+  `startTimezone: String = "UTC"` and `endTimezone: String = "UTC"`, both written onto the created
+  `EventEntity`.
+- `OpenedTripViewModel.createEvent()`: same param split, passed through unchanged to the
+  repository call.
+- `OpenedEventViewModel.updateEvent()`: replace its single `timezone: String` param with
+  `startTimezone: String`/`endTimezone: String`, both written via `currentEvent.copy(...)`.
+- `SyncWorker.kt`: upload map (`performUploadFlow`, event section) gains
+  `"endTimezone" to event.endTimezone` alongside the existing `"timezone" to event.startTimezone`
+  entry (same Firestore key `"timezone"` for the renamed field, per datastructure.txt §1). Both
+  download sites (`syncEventsForTrip`'s new-local-row insert and newer-remote-wins update) read
+  `val remoteEndTimezone = eventDoc.getString("endTimezone") ?: remoteTimezone` and construct/copy
+  `startTimezone = remoteTimezone, endTimezone = remoteEndTimezone` — this is what makes a
+  pre-Phase-4 event document (only ever had `"timezone"`) load correctly with no server migration.
+
+Step 3.2: Add Event form — two timezone fields
+- `AddEventDialog` (`OpenedTripScreen.kt`): replace the single `timezone`/`showTimezonePicker`
+  state with `startTimezone`/`endTimezone` (both initialized from the dialog's existing
+  `initialTimezone` param) and two `TimezonePickerDialog`-backed fields, labeled "Departure
+  timezone"/"Arrival timezone" for the Flight category (matching designmockups/AddEventTimezones.png)
+  and "Start timezone"/"End timezone" for every other category. `onConfirm`'s lambda signature
+  gains the second timezone value (11 params → 12).
+
+Step 3.3: Opened Event edit form — two timezone fields
+- `OpenedEventScreen.kt`: duplicate its existing inline `ExposedDropdownMenuBox`-based timezone
+  picker block into two instances bound to `startTimezone`/`endTimezone` local state (both seeded
+  from `event.startTimezone`/`event.endTimezone` in the screen's `LaunchedEffect`), threaded into
+  `viewModel.updateEvent(...)`'s new two-param call.
+
+Step 3.4: Trip/global default resolution carries to both fields (Bug 5)
+- No new logic: `OpenedTripScreen.kt`'s existing `trip.defaultTimezone ?: globalDefaultTimezone ?:
+  "UTC"` resolution (already computed for `AddEventDialog`'s `initialTimezone` param) seeds both
+  `startTimezone` and `endTimezone`'s initial state in Step 3.2 — the precedence logic itself is
+  reused unchanged, confirming description_detail.txt §6's note that this item needs nothing beyond
+  what Step 3.2 already does.
+
+Step 3.5: Block Verification
+- Create a Flight event with different departure/arrival timezones (e.g. Europe/Brussels →
+  Asia/Tokyo) — confirm both are independently settable when creating and independently editable
+  afterward from the Opened Event screen.
+- Create a non-Flight event — confirm it also carries two timezone fields (both defaulting to the
+  same resolved trip/global value).
+- Sync an event across two devices/a fresh install — confirm both timezone values round-trip.
+  Manually write a plain pre-Phase-4-style event document to Firestore (only a `"timezone"` field,
+  console-edited) and confirm it downloads with `startTimezone == endTimezone`, not a crash.
+
+---
+
+Block 4: Trip Settings Screen — Editable Dates & Invalid-Event Flagging (Bug 7)
+======================================================================================
+Goal: Let the user edit a trip's dates after creation, and flag any event that falls outside them
+without hiding or blocking it, per description_detail.txt §8.
+
+Step 4.1: Convert Trip Settings from a dialog to a full screen
+- Add `Screen.TripSettings` (route `"tripSettings/{tripId}"`) to `MainActivity.kt`'s sealed
+  `Screen` class and `NavHost`, rendering a new `ui/trip/TripSettingsScreen.kt` composable modeled
+  on `SettingsScreen.kt`'s existing full-screen `Scaffold`/`TopAppBar`/back-arrow pattern, matching
+  designmockups/TripSettingsDates.png (back arrow + "Trip Settings" title; "Trip dates" section;
+  "This trip's default timezone" section carrying over today's `TripSettingsDialog` content
+  unchanged; a "Cover photo" section stubbed as a no-op placeholder here, filled in by Block 5).
+- `OpenedTripScreen.kt`'s gear icon changes from `showTripSettingsDialog = true` to a new
+  `onTripSettingsClick: () -> Unit` screen param, wired in `MainActivity.kt` to
+  `navController.navigate(Screen.TripSettings.createRoute(tripId))` — the `showTripSettingsDialog`
+  state and the old `TripSettingsDialog` AlertDialog composable are removed entirely, their content
+  having moved into the new screen.
+
+Step 4.2: Editable trip dates
+- Add Start/End `DatePickerField`s to `TripSettingsScreen`, seeded from `trip.startDate`/
+  `trip.endDate`, saved through a new `OpenedTripViewModel.updateTripDates(startDate: String,
+  endDate: String)` (mirrors `setTripDefaultTimezone`'s `tripRepository.updateTrip(trip.copy(...))`
+  pattern), reusing `HomeScreen.kt`'s existing start≤end validation logic. No hard bound on event
+  dates is implied by this — trip dates themselves have no external constraint either.
+- Caption below the fields (per the mockup): "Narrowing these dates won't delete or hide events —
+  ones that now fall outside will be flagged invalid."
+
+Step 4.3: Invalid-event detection (and the itinerary day-range fix it depends on)
+- New pure function, e.g. `fun isEventInvalid(event: EventEntity, trip: TripEntity): Boolean` in
+  `OpenedTripViewModel.kt` — true when the event's `[startDate, endDate]` isn't fully contained
+  within the trip's `[startDate, endDate]` (`LocalDate` comparison, same parsing pattern
+  `buildItinerary` already uses). Computed on the fly, never stored (datastructure.txt §5).
+- `ItineraryEvent` gains `isInvalid: Boolean`, set in `buildItinerary` via the function above.
+- **Day-range fix** (see "Notes on Decisions" item 2 above): extend `buildItinerary`'s `days` list
+  from strictly `trip.startDate..trip.endDate` to the union of that range and the min/max of any
+  event's own `startDate`/`endDate` that falls outside it — otherwise an out-of-range event has no
+  day slot to render under and is unreachable in the UI. Necessary precondition for Steps 4.4–4.5
+  to be reachable at all.
+
+Step 4.4: Invalid badge — itinerary list card
+- `EventCard` (`OpenedTripScreen.kt`): when `itineraryEvent.isInvalid`, add an "Outside trip dates"
+  pill (ErrorRed-tinted, warning-triangle icon) alongside the existing category/flight-day badge,
+  matching designmockups/InvalidEvent.png — additive, doesn't replace the existing category badge.
+
+Step 4.5: Fix-it banner — Opened Event screen
+- `OpenedEventViewModel.kt`: add `trip: TripEntity?` to `OpenedEventUiState` (already added in
+  Block 2 Step 2.1 for the reminder-date default — reused here, not re-added).
+- `OpenedEventScreen.kt`: when the event is invalid (Step 4.3's function), show a banner matching
+  designmockups/InvalidEvent.png (warning icon, "This event falls outside the trip's dates" + a
+  specific reason line, two actions):
+  * "Edit event dates" — brings the existing Start/End `DatePickerField`s already in this form into
+    view/focus (exact mechanism — scroll vs. relying on the short form's existing visibility — is
+    an implementation-time call).
+  * "Edit trip dates" — navigates to `Screen.TripSettings` (Step 4.1) for this event's trip.
+
+Step 4.6: Block Verification
+- Create a trip, add an event fully inside its date range — confirm no invalid badge anywhere.
+- From Trip Settings, narrow the trip's end date to before that event's date — confirm the event
+  immediately shows the "Outside trip dates" badge in the Itinerary tab and the fix-it banner on
+  its Opened Event screen, and that it still opens/edits/deletes normally (nothing blocked).
+- From the fix-it banner, use "Edit trip dates" — confirm it opens Trip Settings for the correct
+  trip; widen the trip's dates back to cover the event — confirm the badge/banner disappear.
+- Create a brand-new event with dates entirely outside the trip's current range (Bug 1's picker no
+  longer blocks this) — confirm it's still visible in the Itinerary tab (Step 4.3's day-range fix),
+  flagged invalid, not silently missing.
+
+---
+
+Block 5: Trip Cover Images (Bug 6)
+========================================
+Goal: Give every trip a representative cover photo — auto-fetched, user-overridable, with an
+offline illustration fallback — per description_detail.txt §7 and techstack.txt §6.
+
+Step 5.1: Cover-photo fetch service
+- New `photo/CoverPhotoFetcher.kt`: `suspend fun fetchCoverPhoto(destination: String): ByteArray?`
+  — tries Places `searchText` + Photo `media` endpoints first (techstack.txt §6's request shape),
+  falls back to Unsplash `search/photos` if Places has nothing usable, returns `null` if both fail
+  or a key is unconfigured (Step 1.5's empty-string default). Plain `OkHttpClient` +
+  `kotlinx.serialization.json`, no Retrofit.
+- New `photo/CoverIllustration.kt`: a small fixed set of Compose gradient+icon combinations (beach,
+  hiking, flight/travel, city, generic) selected by keyword-substring match against the destination
+  string, generic as the last resort — plain composable, not routed through Coil. Exact
+  keyword→icon mapping is a small implementation-time detail (a reasonable starting set: "beach"/
+  "island" → beach; "mountain"/"hik" → hiking; a short list of known capitals or "city" substring →
+  city; generic otherwise).
+
+Step 5.2: Trigger auto-fetch on trip creation
+- Right after `TripRepository.createTrip()` inserts the new trip, enqueue a best-effort one-off
+  `WorkManager` job (or a direct `viewModelScope` call from `HomeViewModel.createTrip` — whichever
+  is the smaller change once in front of the implementer) calling `CoverPhotoFetcher`; on success,
+  write the bytes to a local cache file (`localCoverPhotoPath`) and set `coverPhotoSource`
+  (`AUTO_PLACES`/`AUTO_UNSPLASH`) via `tripRepository.updateTrip(...)` — but only if
+  `coverPhotoSource` is still null at write time (datastructure.txt §2's "never clobber an
+  already-set photo" rule, relevant once Step 5.3's manual override can race it). A failed/no-key/
+  no-network fetch leaves both fields null; trip creation itself is never blocked on this.
+
+Step 5.3: Manual override
+- `TripSettingsScreen` (Block 4)'s "Cover photo" section (stubbed there, filled in here):
+  `ActivityResultContracts.PickVisualMedia()` restricted to images; on pick, copy to
+  `localCoverPhotoPath`, set `coverPhotoSource = USER`, save via `tripRepository.updateTrip(...)`.
+- Same control added to `AddTripDialog` (`HomeScreen.kt`) per designmockups/AddTripPhoto.png,
+  staging the pick the same way before the trip exists yet, written onto the `TripEntity` at
+  creation instead of a separate update call.
+
+Step 5.4: Sync engine — cover photo upload/download, plus two adjacent fixes
+- `SyncWorker.kt` trip upload map gains `"coverPhotoStoragePath" to trip.coverPhotoStoragePath` and
+  `"coverPhotoSource" to trip.coverPhotoSource`; when `trip.localCoverPhotoPath != null`, upload
+  that file to Storage at `trips/{tripId}/cover.jpg` (deterministic, datastructure.txt §2)
+  independently-retryable exactly like a Pkpass/File-note attachment, clearing
+  `localCoverPhotoPath` and deleting the local cache file once the Storage upload succeeds. Trip
+  download (both the new-local-row and newer-remote-wins paths in the trip section of
+  `performDownloadFlow`) reads both new fields the same way every other trip field already is.
+- **Also fixed here** (see "Notes on Decisions" item 1): `"defaultTimezone" to trip.defaultTimezone`
+  is added to the same upload map, and its corresponding download read/copy, since this step is
+  already touching this exact map for the two cover-photo fields — a real pre-existing cross-device
+  sync gap fixed at zero extra cost, not part of description.txt's original 10 items.
+- Add `storage.rules`'s `/trips/{tripId}/{fileName}` block (datastructure.txt §4) — needs
+  `firebase deploy --only storage` from the developer once implemented.
+
+Step 5.5: Rendering
+- `HomeScreen.kt`'s `LargeTripCard`/`SmallTripCard`: replace the fixed gradient +
+  `Icons.Filled.Flight` placeholder with `AsyncImage` (Coil, already imported) loading a Firebase
+  Storage download URL resolved from `trip.coverPhotoStoragePath` when set, else Step 5.1's
+  illustration composable — matching designmockups/Home.png's two states.
+
+Step 5.6: Block Verification
+- Create a trip with a real-world destination (e.g. "Tokyo, Japan"), both API keys configured,
+  network available — confirm a real photo appears on its Home card (trip creation itself isn't
+  blocked waiting for it — it appears with the illustration fallback first, then swaps in).
+- Create a trip with airplane mode on (or an unresolvable destination) — confirm it falls back to a
+  built-in illustration, never a blank/broken image.
+- Manually override a trip's photo from both Add Trip and Trip Settings — confirm a later sync pass
+  never overwrites a manually-set photo.
+- Confirm the resolved cover photo appears identically on a second device/fresh install of the same
+  trip (proves it's synced, not re-fetched independently per device).
+- Set a trip-level default-timezone override; confirm a second device/fresh install of the same
+  trip now shows it too (verifies the opportunistic `defaultTimezone` sync fix from Step 5.4).
+
+---
+
+Block 6: Google Drive File Picker, Single-Device (Extension A / item 8)
+================================================================================
+Goal: Let the user pick a Drive file via the system picker as a convenience, with an honest
+single-device-only caption, per description_detail.txt §9.
+
+Step 6.1: Picker button in the Link note flow
+- `AddNoteDialog` (both copies): when `kind == NoteKind.LINK`, add a "Pick from Drive" button below
+  the existing URL field (designmockups/AddNoteFile.png), launching
+  `ActivityResultContracts.OpenDocument()` with `type = "*/*"`. On pick:
+  `context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)`,
+  query the display name (a small shared helper, or `PkpassParser.queryDisplayName`-style logic),
+  pre-fill the title if blank, and store `Json.encodeToString(mapOf("uri" to uri.toString(),
+  "displayName" to name))` as `content` with `type = NoteType.GOOGLE_DRIVE` (datastructure.txt §3's
+  second content shape — no new `NoteType`).
+- A caption under the button (per the mockup): "Only opens on this device & account. To let
+  collaborators open it too, paste a Drive share link instead."
+
+Step 6.2: Rendering a picker-based Drive note
+- `OpenedNoteScreen.kt`: `GOOGLE_DRIVE` notes attempt a JSON-object parse of `content` first — if
+  it parses as `{uri, displayName}`, show `displayName` and, on "Open", launch `ACTION_VIEW` on the
+  stored `content://` URI directly (wrapped in try/catch — a `SecurityException` on a
+  non-originating device/account means the grant doesn't exist there) — on failure, show the "Not
+  available on this device" message from designmockups/FileDriveNote.png instead of crashing. If
+  the parse fails (a plain string, today's existing shape), fall back to today's unchanged
+  `ACTION_VIEW`-on-URL behavior.
+
+Step 6.3: Block Verification
+- Use "Pick from Drive" to pick a file — confirm the note is created with the file's name as title
+  and a "Google Drive" badge.
+- On the originating device/account, open the note — confirm it launches successfully.
+- On a second device (or after reinstalling to simulate a lost grant), open the same synced note —
+  confirm the "not available on this device" message, not a crash or silent failure.
+- Confirm today's existing Google Doc/Drive/web URL paste flow (Phase 3) is unaffected — paste each
+  kind and confirm classification/opening still works exactly as before.
+
+---
+
+Block 7: New "File" Note Type (Extension B / item 9)
+============================================================
+Goal: A generic file attachment note type that genuinely syncs to every collaborator's device, per
+description_detail.txt §10.
+
+Step 7.1: Add Note flow — File type
+- Add a "File" entry to the `NoteKind` picker (both copies) per designmockups/AddNoteFile.png,
+  showing a "Choose file" button on selection, launching `ActivityResultContracts.GetContent()`
+  with `"*/*"` (no MIME filter — any file). On pick: query the display name and
+  `context.contentResolver.getType(uri)` for the MIME type, copy the file to app-internal storage
+  (`localAttachmentPath`, generalizing `PkpassParser.copyToLocalStorage`'s pattern), pre-fill the
+  title, and build `content` per datastructure.txt §3 (`storagePath` =
+  `files/{tripId}/{noteId}/{originalFileName}`, `originalFileName`, `mimeType`) with
+  `type = NoteType.FILE`.
+
+Step 7.2: Sync engine — generalize the Pkpass attachment logic
+- `SyncWorker.kt`: every `note.type == NoteType.PKPASS` check (upload-with-attachment,
+  clear-on-success, best-effort Storage delete) widens to `note.type in listOf(NoteType.PKPASS,
+  NoteType.FILE)` — same logic, no new code path (datastructure.txt §5).
+  `PkpassParser.extractStoragePath` is reused as-is (already type-agnostic — just reads
+  `content.storagePath`).
+- Add `storage.rules`'s `/files/{tripId}/{noteId}/{fileName}` block alongside Block 5's addition —
+  needs `firebase deploy --only storage`.
+
+Step 7.3: Opening a File note
+- `OpenedNoteScreen.kt`: a `FILE` note renders a generic card (filename, file-type icon, size if
+  cheaply available, an "Open" button — designmockups/FileDriveNote.png). "Open" downloads the
+  Storage object to app-internal storage if not already cached, then launches `ACTION_VIEW` via a
+  `FileProvider` content URI (Step 1.4/7.4's provider) with the note's `mimeType`.
+
+Step 7.4: Block Verification
+- Add a File note (e.g. a PDF) from both a trip's Notes tab and an event's linked notes — confirm
+  correct filename/type, that it syncs (Firestore doc + Storage object both exist), and that Bug
+  3's "opens immediately" behavior applies to it too.
+- Open it on the same device — confirm it launches in an appropriate app.
+- Open the same File note on a second device/account with no local cache — confirm it downloads and
+  opens correctly there too (proving Extension A's single-device limitation doesn't apply here).
+- Delete the File note — confirm both the Firestore document and the Storage object are gone.
+
+---
+
+Block 8: Pkpass "Can't Choose a File" — Reproduce & Fix (Extension C / item 10)
+========================================================================================
+Goal: Confirm whether the file-picker half of this report is a live bug (the "rendering coming
+soon" half is already confirmed fixed in source, per description_detail.txt §11) and fix it if so.
+
+Step 8.1: Reproduce on a fresh build
+- On the developer's device, confirm whether the Pass file picker (`AddNoteDialog`'s
+  `pickPkpassLauncher`, `ActivityResultContracts.GetContent()` with `"*/*"`) fails to surface/select
+  `.pkpass` files, on a fresh install of everything built through Block 7. This step's output is a
+  yes/no on reproduction, decided by the developer, before any code change below.
+
+Step 8.2: Fix (only if Step 8.1 reproduces)
+- Switch the Pass picker from `GetContent()` to `ActivityResultContracts.OpenDocument()` with an
+  explicit MIME array (`arrayOf("application/zip", "application/octet-stream", "*/*")`) — same
+  framework API family Blocks 6/7 already use, no new dependency. Add
+  `takePersistableUriPermission` too if `OpenDocument()` needs it for `PkpassParser` to reliably
+  re-read the URI (mirroring Block 6 Step 6.1).
+- If Step 8.1 does not reproduce, this step is skipped and the item is marked `[COMPLETED]` on the
+  strength of the already-fixed "rendering coming soon" text plus this step's non-reproduction.
+
+Step 8.3: Block Verification
+- On the developer's own device/file-manager setup, pick a real `.pkpass` file through Add Note's
+  Pass flow — confirm it's selected, parsed, and renders correctly (organization, fields, barcode)
+  — the same checklist Phase 3 Block 5's Step 5.6 already specified, now confirmed end-to-end.
+
+---
+
+Once all 8 blocks are confirmed complete, every item in description.txt is marked `[COMPLETED]`
+(per instructions.txt's process) and Phase 4 is done.

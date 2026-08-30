@@ -5,5 +5,8 @@ This phase will be about bug fixing. Here is a list of bugs I found (unsorted, m
 * When adding a note, go to the editing of the note immediately instead of going back and having to edit immediately afterwards anyways
 * Time zones for begin and end date should be separate
 * Default time zone is defined by the trip
-* There seems to be no image for a trip added (Japan)
+* There seems to be no image for a trip added (eg Japan)
 * It must be possible to edit the dates of the trip. Events outside the date range should be labeled as invalid and invite the user to fix them
+* On adding a google drive file instead of pasting the url: use the storage access framework to let the user pick a file, then check if the authority of the picked file is com.google.android.apps.docs.storage, and use that uri to store in the database. Other users will be able to open it, and request permission if they cannot view it. Verify this and implement if you think it's correct
+* Also add a note type for files. These will be uploaded to firebase too. Provide options to choose the file, and open the file
+* pkpass cannot be chosen, it seems. It says "rendering coming soon", and I cannot choose a file

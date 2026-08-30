@@ -1,0 +1,250 @@
+TripPlanner Phase 4 Detailed Description: Bug Fixes & Small Extensions
+==========================================================================
+
+1. Purpose and Vision
+----------------------
+Phase 3 shipped Settings, sync visibility, delete confirmations, structured Flight/Lodging
+fields, and the Pkpass note type (Block 5 is code-complete, pending the developer's on-device
+verification pass). Using the app surfaced a batch of rough edges and a few small feature gaps
+rather than one cohesive new capability, so Phase 4 is a cleanup phase: fix the ten items in
+DesignDocs/Phase4/description.txt, one at a time, each independently shippable and independently
+verifiable (`extensions.txt` is present but empty — every item, including the three that read as
+small feature additions rather than pure fixes, lives in the one bug list). This phase does not
+introduce a new domain concept the way Phase 3's Pkpass note type did — every item below is either
+a fix to existing behavior or a small, self-contained addition to it.
+
+Sections 2-8 below cover description.txt's first seven items (date-picker default, text-field
+capitalization, add-note navigation, per-event dual timezones, trip-default timezone, trip cover
+images, trip date editing/invalid-event flagging). Sections 9-11 cover its last three items (Drive
+SAF picker, generic File note type, Pkpass picker/rendering) — these were originally logged in a
+separate `extensions.txt`, which is why they're still called out as "Extension A/B/C" below for
+continuity with earlier discussion in this phase, but they are implemented in the same single pass
+through description.txt's list order, with no bugs-vs-extensions distinction in practice. Each
+item is stopped on for confirmation once implemented, and marked `[COMPLETED]` in description.txt
+directly (there being no separate extensions.txt content to mark).
+
+2. Bug 1 — Date pickers should default to the trip's start date
+--------------------------------------------------------------------
+Today, every date picker in the app (Add/Edit Event, Add/Edit Reminder, Add Trip) opens showing
+today's date (or nothing) regardless of which trip it belongs to, which is awkward when planning
+a trip that isn't around the current date.
+*   **Fix**: Any date picker scoped to a trip (Add/Edit Event, Add/Edit Reminder — not the
+    trip-level "Add Trip" dialog, which has no trip yet to default from) opens pre-selected/
+    pre-scrolled to that trip's start date whenever the field doesn't already hold a value (i.e.
+    only affects the *initial* state of a blank field; editing an existing event/reminder still
+    shows its own existing date first).
+*   **Explicitly not a hard bound**: The picker does not block dates before (or after) the trip's
+    range — a date outside the trip's range remains selectable. This is deliberate: Bug 7 (section
+    7) requires that events outside the trip's date range be *allowed but flagged invalid*, not
+    prevented from being created in the first place. A hard minimum in the date picker would make
+    that impossible to reach through normal use.
+
+3. Bug 2 — Text fields auto-capitalize their first letter
+----------------------------------------------------------------
+No text input field in the app currently applies any auto-capitalization; typed text keeps
+whatever case the user typed.
+*   **Fix**: Every free-text input field (trip destination, event/note/reminder titles, note
+    text-block content, checklist item text, Pkpass note title, Inner Circle contact name, packing
+    template item text, etc.) auto-capitalizes the first letter of what's typed, the same way most
+    Android text fields with sentence-style input behave — the user can still manually override it
+    (retype/backspace to lowercase) since this is an input hint, not an enforced constraint.
+*   **Excluded**: Fields that are inherently not prose — the pasted URL field, Flight number,
+    Departure/Arrival airport codes, Booking number, email/search fields (if any) — are left as
+    plain input, since capitalizing those would actively work against their expected format.
+
+4. Bug 3 — Adding a note opens it for editing immediately
+------------------------------------------------------------------
+Today, confirming the Add Note dialog just creates the note and closes the dialog, leaving the
+user back on the trip's/event's note list — to add any content (for a Text Block or Checklist) or
+review what was imported (for a Pass), they have to find and tap the note they just created.
+*   **Fix**: Confirming Add Note (from both the trip-level and event-level note lists) navigates
+    straight to that note's Opened Note screen, exactly as if the user had tapped it in the list.
+    This applies uniformly to every note kind (Text Block, Checklist, Link, Pass) — even Link and
+    Pass notes benefit, since it gives the user immediate visual confirmation of what was created
+    (the classified type, or the rendered pass) without a separate navigation step.
+
+5. Bug 4 — Separate timezones for an event's start and end
+-------------------------------------------------------------------
+An event today has one `timezone` value applied to both its start and end date/time. This breaks
+down for any event that starts in one timezone and ends in another (the primary case being
+Flight events, which is exactly the category Phase 3 gave structured departure/arrival fields to).
+*   **Fix**: An event carries two independent timezone values — one for its start (departure, for
+    Flight) date/time and one for its end (arrival) date/time. Both default the same way described
+    in section 6 (trip's default timezone, falling back to the global default) when the event is
+    created, and both remain independently editable afterward (two timezone pickers instead of
+    one, in both the Add Event form and the Opened Event edit form).
+*   Non-Flight categories still have a "start" and "end" timezone even though many events with
+    them will naturally have the same value for both (e.g. a same-city Restaurant reservation) —
+    this isn't category-conditional; it's a uniform change to every event's timezone handling.
+*   Everywhere the event's timezone is used to render a displayed date/time (itinerary list, event
+    detail screen) must use the correct one of the two for whichever end of the event is being
+    shown.
+
+6. Bug 5 — Default timezone is defined by the trip
+-------------------------------------------------------------
+Already implemented in Phase 3 (the trip's `defaultTimezone`, settable via the trip's settings
+dialog, already pre-fills new events' timezone field, falling back to the global default
+timezone from Settings if the trip has none set). No behavior change is expected here; this item
+is carried forward only because Bug 4 changes the field it defaults *into* (two timezone fields
+instead of one) — both new fields get the same default-resolution logic Bug 4's single field has
+today. If, during confirmation of this document, the developer has a specific case in mind where
+today's behavior doesn't already satisfy this, that supersedes this note.
+
+7. Bug 6 — Trip cover images
+--------------------------------
+No trip has ever displayed a real cover photo — Home screen trip cards render a fixed gradient
+placeholder with a generic flight icon, regardless of destination. This turns out to be a Phase 1
+feature that was fully speced in techstack.txt (Google Places Photos API as the primary source,
+Unsplash API as a fallback when Places has no photo, a user-upload override, and small built-in
+illustration templates as an offline/no-photo fallback — with `coil-compose` already added
+specifically for this) but never implemented in any Phase 1/2 block; cards have shipped with the
+placeholder ever since. Per the developer's confirmation, Phase 4 builds out that original scope
+in full:
+*   **Automatic photo**: When a trip is created (or its destination is later edited — see Bug 7),
+    the app attempts to fetch a representative photo of the destination — Google Places Photos
+    API first, Unsplash API if Places has nothing usable for that destination string.
+*   **Manual override**: The user can replace the automatic photo with one of their own (picked
+    from their device), at trip creation or later from the trip's settings; a manually-set photo
+    is not overwritten by a later automatic re-fetch.
+*   **Offline/no-photo fallback**: If neither API returns a usable photo (no network, no match,
+    quota exhausted) and the user hasn't set one manually, the trip card falls back to one of a
+    small set of built-in illustration templates (e.g. beach, hiking, flight, city, generic) —
+    not the current plain gradient — chosen by a simple heuristic (e.g. keyword match against the
+    destination string, generic as the last resort) so every trip card always shows *something*
+    representative rather than nothing.
+*   Home screen cards (both the large "Current/Upcoming" style and small style, per Phase 1's
+    layout) render this photo/illustration as their existing photo-card treatment already implies
+    (`designmockups`/Phase 1 already assumed a photo-style card — see implementation_plan.txt's
+    "Large photo-style cards... gradient scrim overlay").
+*   This is per-trip, cloud-synced metadata (a photo shouldn't need re-fetching/re-picking on a
+    second collaborator's device) — exact storage shape (a URL string vs. an uploaded asset,
+    Firebase Storage path if user-uploaded) is a Tech Stack/Data Structure decision, not decided
+    here.
+
+8. Bug 7 — Editable trip dates, with invalid-event flagging
+--------------------------------------------------------------------
+A trip's start/end dates are set once at creation and can never be changed afterward; there is no
+Trip Settings screen for it today (only a dialog covering the default-timezone setting from Phase
+3, despite a full `TripSettings.dc.html` mockup existing from Phase 3's design pass that was never
+fully built out into a screen).
+*   **Editable trip dates**: The user can change a trip's start and end date after creation (from
+    the trip's settings). This is the one piece of trip-level editing that doesn't exist anywhere
+    today (destination is also not editable today, but that's not in scope here — only dates were
+    called out in the bug).
+*   **Invalid-event flagging**: An event is "invalid" when its own date range isn't fully
+    contained within its trip's current date range (this can happen either because the trip's
+    dates were narrowed after the event was created, or because Bug 1's picker no longer enforces
+    a hard bound). An invalid event:
+    *   Is visually labeled as such wherever it appears (itinerary list card, event detail
+        screen) — a clear badge/indicator, distinct from the existing category badges.
+    *   "Invites the user to fix them" — the event detail screen surfaces a direct call to action
+        (e.g. an inline prompt/button) that gets the user to either adjust the event's own dates or
+        (equally valid) reconsider the trip's dates, rather than just silently tagging it and
+        leaving the user to figure out what to do.
+    *   Remains fully otherwise functional (syncs, displays, is editable) — "invalid" is advisory,
+        not a blocking state.
+*   Narrowing a trip's dates so that existing events fall outside the new range does not delete,
+    hide, or block those events — they simply become (or remain) flagged invalid per the above.
+
+9. Extension A — Google Drive file picker (single-device convenience)
+----------------------------------------------------------------------------
+description.txt proposes letting the user pick a Drive file via Android's Storage Access Framework
+(`ACTION_OPEN_DOCUMENT`) instead of pasting a share URL, on the premise that "other users will be
+able to open it, and request permission if they cannot view it." That premise doesn't hold: the
+`content://` URI SAF hands back is a permission grant scoped to the picking app + device + Google
+account (via `takePersistableUriPermission`); there is no documented way to recover Drive's real,
+globally-shareable link from it, so a different collaborator's device cannot resolve that URI at
+all. This exact question was already investigated in Phase 3 (techstack.txt §5) and reached the
+same conclusion, which is why Phase 3 shipped the paste-a-URL flow instead of a picker.
+
+Per the developer's direction, this is still being built, explicitly as a single-device
+convenience rather than a cross-collaborator sharing mechanism:
+*   In the Link note flow, alongside the existing URL text field, a "Pick from Drive" button
+    launches `ACTION_OPEN_DOCUMENT` (filtered to Drive's documents provider where possible). The
+    picked file's display name becomes the note's title (like today's URL-paste flow can suggest
+    a title) and its `content://` URI plus a persisted read permission are stored as the note's
+    content (classified as `GOOGLE_DRIVE`, reusing that existing note type rather than adding a
+    new one).
+*   The picker button/flow is visibly labeled so the user isn't surprised later — e.g. a short
+    caption near the button making clear this only opens on the device/account that picked it,
+    and that pasting a real Drive share link (the existing flow) is what to use if other
+    collaborators need to open it too.
+*   On the originating device/account, opening the note launches the file via that granted URI
+    (as today's URL notes launch `ACTION_VIEW`). On any other device/account (including the same
+    user on a second device), the note is still visible (title, "Google Drive" badge) but opening
+    it shows a clear, non-broken message explaining it isn't available on this device, rather than
+    a raw permission-denied crash or a silently broken link.
+
+10. Extension B — New "File" note type (generic file upload)
+-------------------------------------------------------------------
+A new note type for an arbitrary file (not a `.pkpass`, not a Drive reference) that genuinely
+syncs to every collaborator's device, the same way Phase 3's Pkpass note type does — this is the
+feature that actually delivers "other users can open it" for an arbitrary local file, which
+Extension A structurally cannot.
+*   **Adding**: A "File" entry in the note-type picker (alongside Text Block/Checklist/Link/Pass)
+    that opens Android's system file picker (`ACTION_OPEN_DOCUMENT`/`GetContent`, unfiltered by
+    type — any file), copies the picked file to app-internal storage, and pre-fills the note's
+    title from the file's display name.
+*   **Storage & Sync**: Follows the Pkpass precedent exactly — the file uploads to Firebase
+    Storage at a deterministic per-note path, the note's Firestore document carries enough
+    metadata (original file name, storage path, and — where cheaply available — a MIME type/size)
+    to render a list entry and drive the download, and the note is only marked synced once both
+    the Storage upload and the Firestore write succeed.
+*   **Opening**: Since an arbitrary file has no in-app rendering the way a Pkpass does, opening a
+    File note downloads it (if not already cached locally) and hands it to the system via
+    `ACTION_VIEW`/a chooser, so whatever app the device has for that file type opens it — this
+    works identically for every collaborator, on every device, unlike Extension A.
+*   Exact caching strategy (download-on-open vs. download-on-sync), size limits (if any), and the
+    Firebase Storage path convention are Tech Stack/Data Structure decisions, not decided here —
+    following the Pkpass note type's existing pattern is the strong default.
+
+11. Extension C — "Pkpass can't be chosen, shows 'rendering coming soon', and I cannot choose a
+file"
+----------------------------------------------------------------------------------
+The "rendering coming soon" half of this was checked against the current codebase and looks
+already fixed in source: `NoteKind.PASS` is present and selectable in both Add Note dialogs
+(trip-level and event-level), and the Opened Note screen renders a full wallet-style `PkpassCard`
+(organization, fields, barcode) for Pkpass notes — no "coming soon" placeholder text exists
+anywhere in the app anymore. This landed in the "Phase 3: Block 5" commit.
+
+However, the developer's updated report adds "and I cannot choose a file" — a distinct symptom
+(the file picker itself not working) that a source read alone can't confirm or rule out, and isn't
+explained by the "coming soon" text being stale. Two things can independently be true: the
+placeholder-text symptom can be stale (fixed, just not yet on the developer's installed build)
+while the file-picker symptom is a real, separate, still-live bug (e.g. the "Choose .pkpass file"
+button's `ActivityResultContracts.GetContent()` launch with a `"*/*"` filter not surfacing/
+selecting files as expected on the developer's device, or throwing before `PkpassParser.parse()`
+runs). This item's implementation step starts with reproducing on the developer's device against
+a fresh build/install (ruling out a stale-APK explanation first, same as Extension C's original
+"coming soon" report turned out to be), then debugging the picker specifically if it still
+reproduces. It is not assumed fixed going into implementation.
+
+12. Out of Scope
+---------------------
+*   Trip destination editing (only trip *dates* were called out in Bug 7; destination stays
+    fixed after creation, same as today).
+*   Any change to which categories get structured event fields (Phase 3's Flight/Lodging scope is
+    unchanged).
+*   A fully general in-app picker for Google Docs/Sheets (Extension A is Drive-file-specific, per
+    its own wording; Docs/Sheets notes remain paste-a-URL only).
+*   Retroactively back-filling cover photos for trips that already exist before this phase ships —
+    out of scope unless the developer says otherwise; new/edited trips get the new behavior.
+*   Any change to the sync engine's conflict-resolution model (last-write-wins) beyond what's
+    needed to carry the new/changed fields (per-event dual timezone, trip photo, File note
+    attachments) through it, following the existing pattern.
+
+13. Open Items Carried Into Later Steps
+--------------------------------------------
+*   Which Places/Unsplash API keys and quota/cost constraints apply, and the exact request shape
+    for each (Bug 6) — Tech Stack decision.
+*   Storage shape for a trip's cover photo (URL string vs. uploaded Storage object) and for a
+    File note's attachment (path convention, size limits) — Data Structure decision.
+*   Room schema changes: splitting `EventEntity.timezone` into two columns (Bug 4), adding a trip
+    cover-photo field (Bug 6), adding a `File` note type's local-attachment column if it doesn't
+    already fit the existing `localAttachmentPath` column Phase 3 added — Data Structure decision,
+    including the migration version bump.
+*   Exact visual treatment of the "invalid event" badge and its fix-it call to action (Bug 7), and
+    of the built-in illustration templates (Bug 6) — Mockup step decision.
+*   Whether the built-in illustration set (Bug 6's offline fallback) is a small fixed set of
+    vector icons/gradients (cheap, no new assets) or actual bundled illustration images — Tech
+    Stack decision.

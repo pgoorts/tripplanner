@@ -1,0 +1,174 @@
+TripPlanner Phase 4 Tech Stack Proposal: Bug Fixes & Small Extensions
+=========================================================================
+
+This document proposes the libraries, services, and (for two items) approach decisions needed to
+implement Phase 4 per description_detail.txt. Most of Phase 4 is built on infrastructure the app
+already has (Room, Firestore, Firebase Storage, Compose/Material3, the Pkpass note type's
+pick-file/upload/sync pattern from Phase 3 Block 5). Only item 6 (trip cover images) needs
+genuinely new dependencies and external services — every other item is UI/logic work on top of
+what's already in the app.
+
+1. Date Pickers Default to Trip Start (description.txt item 1)
+--------------------------------------------------------------------
+*   No new dependency. `DatePickerField.kt`'s existing `rememberDatePickerState(initialSelectedDateMillis = ...)`
+    already accepts an initial value (currently only ever the field's own current value, per
+    Bug 1's research); it just needs a new optional `defaultMillis` parameter used when the field
+    is blank, threaded down from each trip-scoped call site (`AddEventDialog`, `AddReminderDialog`
+    in both `OpenedTripScreen.kt`/`OpenedEventScreen.kt`) using that trip's `startDate`.
+
+2. Auto-Capitalize First Letter (description.txt item 2)
+------------------------------------------------------------------
+*   `androidx.compose.ui.text.input.KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)`
+    — part of `androidx.compose.foundation`/`ui-text`, already a transitive dependency of Compose
+    (no version bump needed). Applied to every free-text `OutlinedTextField`/`TripTextField` per
+    description_detail.txt §3's scope; omitted on the excluded structured/code-like fields (URL,
+    flight number, airport codes, booking number).
+
+3. Add Note Opens Editor Immediately (description.txt item 3)
+--------------------------------------------------------------------
+*   No new dependency. `androidx.navigation:navigation-compose` (already used for every other
+    screen transition) — after `viewModel.createNote()`/`addNote()` returns the created
+    `NoteEntity`'s `id`, navigate to `Screen.OpenedNote.createRoute(noteId)` (the same route
+    tapping an existing note card already uses, per `MainActivity.kt`) instead of just closing the
+    dialog.
+
+4. Separate Start/End Timezones per Event (description.txt item 4)
+------------------------------------------------------------------------
+*   No new dependency. `TimezonePickerDialog.kt` (Phase 3) is reused twice instead of once — no
+    change to the picker itself, just to how many timezone fields `AddEventDialog`/the Opened
+    Event edit form carry and pass to it. `java.time.ZoneId` (already used) continues to back the
+    conversion logic for whichever of the two timezones applies to the start vs. end date/time
+    being rendered. Room schema shape (splitting the `events.timezone` column) is a Data Structure
+    decision, not a tech-stack one.
+
+5. Trip-Default Timezone (description.txt item 5)
+-------------------------------------------------------
+*   Already implemented (Phase 3) — the same resolution logic (trip's `defaultTimezone`, falling
+    back to the global DataStore default) that a single event timezone field uses today extends
+    unchanged to both of item 4's new fields. No new dependency or approach.
+
+6. Trip Cover Images (description.txt item 6)
+----------------------------------------------------
+This is the one item needing new external services and a new (small) piece of infrastructure —
+the app has never made an external REST call before. Per the developer's decision, the full
+original Phase 1 scope is built: automatic photo, manual override, offline fallback.
+
+*   **Google Places API (Places API (New), Text Search + Place Photo endpoints)** — primary photo
+    source. `POST https://places.googleapis.com/v1/places:searchText` with the trip's destination
+    string as the query, requesting a `places.photos` field mask, returns candidate place(s) each
+    with a `photos[].name` reference; `GET https://places.googleapis.com/v1/{photo.name}/media`
+    (with `maxWidthPx`/`maxHeightPx` and the API key) returns (redirects to) the actual image
+    bytes. Both are plain HTTPS+JSON/binary calls — no Places SDK-for-Android dependency needed,
+    just the REST API, avoiding pulling in Google's heavier Maps/Places client library for what is
+    two lightweight calls.
+*   **Unsplash API (Search Photos endpoint)** — fallback when Places returns no usable photo
+    (no match, no photo on the place, or the request fails). `GET https://api.unsplash.com/search/photos?query={destination}`
+    with the app's Unsplash Access Key, taking the first result's `urls.regular` as the photo URL.
+    Free ("Demo") tier is sufficient for this app's scale (50 requests/hour); this is a
+    developer-provisioned API key, same pattern as `google-services.json` — not committed to the
+    repo, added via `local.properties`/a generated `BuildConfig` field.
+*   **Networking client**: plain `OkHttp` (`com.squareup.okhttp3:okhttp`) for these two JSON calls,
+    with `kotlinx.serialization.json` (already a dependency, already used for `PkpassContent`,
+    Firestore-adjacent payloads, etc.) parsing the responses — not Retrofit. Phase 1's techstack.txt
+    originally proposed "Ktor Client or Retrofit" for a *broader* set of four external services;
+    this phase only needs two simple GET/POST-JSON calls, so a full Retrofit abstraction (service
+    interfaces, converters, a second HTTP-client-adjacent dependency graph) isn't earning its
+    keep yet. If/when Phase 5 picks up the weather/currency/flight-tracking services and the
+    external-call surface grows, that's the natural point to introduce Retrofit and fold these two
+    calls into the same client — noted as an open item below rather than decided now.
+*   **Automatic-photo trigger**: fetched once when a trip is created (destination is set and
+    immutable at creation per Bug 7's scope — see item 7), and re-fetched if the destination is
+    ever made editable in a future phase. Runs as a best-effort background step (e.g. via the
+    existing `SyncWorker`/a lightweight one-off `WorkManager` job) — a failed/slow photo fetch
+    must never block trip creation itself.
+*   **Manual override — photo picker**: `ActivityResultContracts.PickVisualMedia()` (Android
+    Photo Picker; part of `androidx.activity:activity-compose`, already a dependency at 1.8.2 —
+    no version bump needed) restricted to images. The picked image is uploaded to Firebase
+    Storage (already a dependency, already used for Pkpass/File-note attachments) at a
+    deterministic per-trip path, following the exact same "local path → Storage upload → clear
+    local path once synced" pattern `SyncWorker.kt` already implements for Pkpass notes.
+*   **Offline/no-photo fallback (illustration templates)**: a small fixed set of Compose vector
+    icon + gradient-background combinations (e.g. beach, hiking, flight/travel, city, generic),
+    selected by simple keyword-substring matching against the trip's destination string, generic
+    as the last resort. No new dependency, no bundled image assets — built from
+    `androidx.compose.material.icons` (already used throughout the app) and `Brush`/gradient APIs
+    already used for existing trip-card treatments, so this fallback works with zero network
+    access.
+*   **Displaying the resolved photo**: `coil-compose` (already a dependency since Phase 1,
+    specifically added for this and never used until now — `AsyncImage` already imported in
+    `HomeScreen.kt`) loads whichever URL/Storage-download-URL was resolved; the illustration
+    fallback is a plain Compose composable, not routed through Coil.
+
+7. Editable Trip Dates & Invalid-Event Flagging (description.txt item 7)
+--------------------------------------------------------------------------------
+*   No new dependency. Reuses `DatePickerField.kt`/`TripSettingsDialog` (Phase 3) — extended to
+    also edit `startDate`/`endDate`, following the same pattern the default-timezone field already
+    uses (local Room update + marks the trip `PENDING_UPDATE` for the existing sync engine, no
+    special-casing needed since a trip's dates already sync as plain fields).
+*   **Invalid-event detection**: pure Kotlin comparison logic (an event's date range vs. its
+    trip's current date range using `java.time.LocalDate`, already used throughout the codebase)
+    computed client-side wherever events are read for display (itinerary building in
+    `OpenedTripViewModel.kt`, the Opened Event screen) — not a stored/synced flag, since it's
+    fully derivable from data that's already synced (the trip's dates, the event's dates) and
+    keeping it derived avoids a whole new invalidation-on-trip-date-change code path.
+*   **Badge/CTA UI**: plain Compose (`Surface`/`Icon`/`Text`, matching the existing category-badge
+    visual pattern already used for events) — no new dependency.
+
+8. Google Drive File Picker, Single-Device (description.txt item 8)
+-------------------------------------------------------------------------
+*   No new dependency. `ActivityResultContracts.OpenDocument()` (part of `androidx.activity`,
+    already used elsewhere in the app for the Pkpass/file-pick flow) launched with
+    `Intent.EXTRA_MIME_TYPES` left broad (Drive's documents provider decides what it shows), plus
+    `context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)`
+    to keep the read grant valid across app restarts on that device. No Drive API/SDK dependency —
+    per description_detail.txt §9, this deliberately does not attempt to resolve a portable Drive
+    link (that's the part that's structurally not possible from a `content://` URI, per Phase 3's
+    techstack.txt §5 finding), it only needs to reopen the same URI on the same device later.
+
+9. New "File" Note Type (description.txt item 9)
+--------------------------------------------------------
+*   No new dependency — a direct rerun of the Pkpass note type's existing pattern (Phase 3 Block
+    5): `ActivityResultContracts.GetContent()` (already used for Pkpass) with no MIME filter (any
+    file), `context.contentResolver.query(... OpenableColumns.DISPLAY_NAME ...)` for the title
+    (already used, `PkpassParser.queryDisplayName` is directly reusable/adaptable), copy to
+    app-internal storage, upload to Firebase Storage via the same `SyncWorker.kt` upload/download/
+    delete logic already written for `PKPASS` notes (generalized to cover this new type rather
+    than duplicated). `context.contentResolver.getType(uri)` (framework API, no dependency) gets
+    the MIME type for the stored `content` metadata. Opening a File note hands its downloaded
+    local copy to `Intent.ACTION_VIEW` with a `FileProvider` content URI (a `FileProvider` is not
+    yet configured anywhere in the app's manifest/dependencies — this is the one small new piece
+    of plumbing this item needs: `androidx.core:core-ktx`'s `FileProvider`, already a transitive
+    dependency of `androidx.core`, just needs a `<provider>` entry + `file_paths.xml` added to the
+    manifest/res, no new Gradle dependency).
+
+10. Pkpass "Can't Choose a File" (description.txt item 10)
+------------------------------------------------------------------
+*   No new dependency proposed — this item starts with reproduction, not a rebuild. If, after
+    confirming on a fresh install it's still reproducible, the cause turns out to be the existing
+    `ActivityResultContracts.GetContent()` + `"*/*"` combination not surfacing/selecting `.pkpass`
+    files reliably on some devices/file-manager apps, the fallback approach is switching to
+    `ActivityResultContracts.OpenDocument()` with an explicit `arrayOf("application/zip", "application/octet-stream", "*/*")`
+    MIME array (same framework API family already used elsewhere in this phase for items 8-9, no
+    new dependency either way) — but this is a debugging outcome to confirm during implementation,
+    not decided here.
+
+11. New Dependencies Summary
+-----------------------------------
+*   `com.squareup.okhttp3:okhttp` — new, for item 6's two API calls.
+*   No other new Gradle dependencies. `activity-compose`, `coil-compose`, `kotlinx-serialization-json`,
+    `firebase-storage-ktx`, and `androidx.core` are all already present and sufficient for every
+    other item.
+*   Two new developer-provisioned secrets needed for item 6, neither committed to the repo (same
+    handling as the existing `google-services.json`/service-account keys): a Google Cloud API key
+    with the Places API (New) enabled and billing configured, and an Unsplash API Access Key
+    (free/demo tier).
+
+12. Open Items Carried Into Later Steps
+----------------------------------------------
+*   Exact Room schema for split timezones (item 4), the trip cover-photo fields (item 6: URL
+    string vs. Storage path vs. both, plus a way to tell "auto-fetched" from "user-overridden"
+    apart), and the generalized File-note `content` shape (item 9) are Data Structure decisions.
+*   Whether Phase 5 (when picked up) introduces Retrofit and folds item 6's two OkHttp calls into
+    it, given Phase 1's original four-service proposal — noted here, not decided.
+*   Exact keyword→illustration mapping and the illustration set's specific icons/gradients (item
+    6's offline fallback) is a Mockup-step detail.

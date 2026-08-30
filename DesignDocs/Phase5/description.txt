@@ -1,0 +1,25 @@
+This phase is a placeholder for external data service integrations that were proposed in Phase 1's
+techstack.txt but never implemented in any Phase 1-3 block, and were deliberately deferred here
+(rather than folded into Phase 4's bug-fix/extensions scope) during a Phase 4 audit of prior-phase
+gaps, since each is a genuinely new feature/dependency rather than a fix to existing behavior.
+
+Not started. When this phase is picked up, it should go through the normal per-phase process
+(phase description review -> techstack -> datastructure -> mockups -> implementation plan), the
+same as every other phase - this file is only the seed list, not a finished description.
+
+Carried over from DesignDocs/Phase1/techstack.txt §6-7 (original proposal, never built):
+* Destination/event-location autocomplete (Google Places API or Mapbox Geocoding API were
+  proposed as alternatives).
+* Weather forecast data for a trip's destination (WeatherAPI.com or OpenWeatherMap were proposed
+  as alternatives).
+* Currency conversion rate information (ExchangeRate-API was proposed).
+* Real-time flight tracking by flight code (Aviation Edge API was proposed) - note this now has a
+  natural hook into Phase 3 Block 4's structured Flight event fields (flight number, departure/
+  arrival airport codes) that didn't exist yet when this was originally proposed.
+* A networking client (Retrofit or Ktor were proposed) - needed by all four of the above; the app
+  currently makes zero external REST calls, only Firebase SDK calls.
+
+None of the above has any code, dependency, or UI in the app today - this is a from-scratch
+proposal, not a partially-built feature. Revisit which of these (if any) are still wanted, and
+whether newer/different API choices make more sense, before writing a real description_detail.txt
+for this phase.

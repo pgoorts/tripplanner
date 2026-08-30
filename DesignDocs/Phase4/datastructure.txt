@@ -1,0 +1,204 @@
+TripPlanner Phase 4 Data Structure: Bug Fixes & Small Extensions
+====================================================================
+
+This document covers every Room/Firestore/Storage schema change Phase 4 needs, per
+description_detail.txt and techstack.txt. Items 1, 2, 3, 5, 7 (date-picker default, text
+capitalization, add-note navigation, trip-default timezone, trip date editing + invalid-event
+flagging), 8 (Drive picker, reuses existing `content` string), and 10 (pkpass picker bug) need no
+schema change at all — everything below is for items 4, 6, and 9.
+
+1. Events Table — Split Timezone (item 4)
+------------------------------------------------
+`events.timezone` (currently one required `String` column, IANA Timezone ID) becomes two:
+*   The **existing** physical column is kept and reused for the *start* timezone — no new column
+    for this half. The Kotlin field is renamed `startTimezone` but stays mapped to the same
+    underlying `timezone` SQL column (`@ColumnInfo(name = "timezone")`), and the Firestore field
+    keeps the key `"timezone"`. This is deliberate: it means every already-synced event document
+    (from before Phase 4) is already valid as a "start timezone only" record with no server-side
+    backfill needed — see section 5 for how a missing end-timezone is handled on download.
+*   One **new** nullable column, `endTimezone: String?` (IANA Timezone ID), added via migration
+    and backfilled from the existing `timezone` value (see section 7) so every pre-existing event
+    ends up with `startTimezone == endTimezone`, matching its current single-timezone behavior
+    exactly until the user edits it. New Firestore field, key `"endTimezone"`.
+*   Nullable at the Room/Firestore level (consistent with this project's existing additive-column
+    pattern, e.g. Phase 3's `flightNumber`/`bookingNumber`) even though application logic always
+    populates both fields for a newly created or edited event going forward — a null
+    `endTimezone` is only ever read as "same as start" (see section 5), never treated as an error.
+
+2. Trips Table — Cover Photo (item 6)
+--------------------------------------------
+Three new nullable columns on `trips`:
+*   `coverPhotoStoragePath: String?` — Firebase Storage object path holding the trip's cover
+    image, whatever its origin (auto-fetched or user-uploaded — see below for why both end up
+    here rather than only the user-upload case). Deterministic, same pattern as Phase 3's Pkpass
+    `content.storagePath`: `trips/{tripId}/cover.jpg` — always re-encoded/saved as JPEG
+    regardless of the source API's original format, so the path needs no extension variable and
+    every trip has at most one Storage object for this. **Synced** (part of the Firestore trip
+    document) — every collaborator's device should show the same cover photo without needing to
+    independently re-fetch or re-pick it.
+*   `coverPhotoSource: String?` — one of `AUTO_PLACES` / `AUTO_UNSPLASH` / `USER` / `null` (no
+    photo yet, or fetch failed and nothing else has been set). **Synced**. Purpose: lets the
+    auto-fetch job (section 5) know not to clobber a photo that's already been set (by the user,
+    or by an auto-fetch that already succeeded via a retried job) — it only writes when this is
+    currently null. Purely informational otherwise; the rendering path (section 5) doesn't care
+    *which* source a photo came from, only whether `coverPhotoStoragePath` is set.
+*   `localCoverPhotoPath: String?` — **local-only** (not part of the Firestore document, same
+    pattern as `NoteEntity.localAttachmentPath`), absolute path to a cached image file in
+    app-internal storage staged for upload. Used for both the auto-fetch path (the image bytes
+    downloaded from Places/Unsplash are staged here before upload — see section 2's storage
+    rationale below) and the user-upload override path (the picked photo is staged here the same
+    way). Cleared once the Storage upload succeeds, exactly mirroring `localAttachmentPath`.
+
+**Why auto-fetched photos are re-uploaded to our own Storage instead of just storing the
+Places/Unsplash URL directly**: Unsplash's photo URLs are public, permanent CDN links and would be
+safe to store/sync as-is, but the Google Places Photo "media" endpoint requires the API key on
+every request. Storing that URL (with the key embedded) in a Firestore document that syncs to
+every collaborator's device would leak the API key to any client reading trip data. Downloading
+the image once (on whichever device performs the auto-fetch — normally the trip's creator) and
+re-uploading the actual bytes to our own Firebase Storage, governed by our own Security Rules,
+avoids that leak entirely and gives a single, uniform `coverPhotoStoragePath` field regardless of
+provider — the rest of the app (rendering, sync) never needs to know or care whether a photo came
+from Places, Unsplash, or the user.
+
+3. Notes Table — New "File" Type & Drive-Picker Content Shape (items 8, 9)
+--------------------------------------------------------------------------------
+*   `type` enum gains one new value: `FILE` (alongside the existing `TEXT_BLOCK`, `CHECKLIST`,
+    `WEB_URL`, `GOOGLE_DOC`, `GOOGLE_DRIVE`, `PKPASS`).
+*   A `FILE` note's `content` is a JSON object, following the same "flattened at import time"
+    shape as `PKPASS`'s `content` (datastructure.txt §3 in Phase 3):
+    ```json
+    {
+      "storagePath": "files/{tripId}/{noteId}/{originalFileName}",
+      "originalFileName": "itinerary.pdf",
+      "mimeType": "application/pdf"
+    }
+    ```
+    `storagePath` is deterministic from `tripId`/`noteId` (same reasoning as Pkpass's), so it's
+    written into `content` immediately at import time, before the upload finishes.
+*   **No new Room column for `FILE` notes** — `localAttachmentPath` (added in Phase 3 for
+    `PKPASS`) is reused as-is for the same purpose (staging the picked file before upload); its
+    inline comment (currently "Local-only; PKPASS notes only") is broadened to cover both types,
+    since the column's meaning ("a file is staged locally, waiting to sync") is identical for
+    both.
+*   **`GOOGLE_DRIVE` content gets a second shape, not a new column or a new NoteType**: today,
+    every `WEB_URL`/`GOOGLE_DOC`/`GOOGLE_DRIVE` note's `content` is a plain URL string. A
+    picker-based Drive note (item 8) instead stores a small JSON object:
+    ```json
+    { "uri": "content://com.google.android.apps.docs.storage/document/...", "displayName": "Q3 Itinerary.pdf" }
+    ```
+    Rendering code distinguishes the two shapes by attempting a JSON-object parse of `content`
+    first (as `PKPASS`/`FILE` already do) and falling back to "plain URL string" if that fails —
+    no new enum value needed since the *meaning* (a Google Drive reference) is identical; only
+    *how it's opened* differs (launch the stored `content://` URI directly vs. `ACTION_VIEW` on a
+    web URL), which the two content shapes already distinguish unambiguously. This keeps
+    `GOOGLE_DRIVE`'s existing sync/display code path (it's still just a `Note` document with a
+    `content` string) entirely unchanged at the Firestore/Room level.
+
+4. Firebase Storage — Two New Storage Locations
+---------------------------------------------------------
+*   **`/trips/{tripId}/cover.jpg`** — one object per trip's cover photo (item 6). Security rule,
+    mirroring the existing `/pkpass/{tripId}/{noteId}/{fileName}` rule from Phase 3:
+    ```javascript
+    match /trips/{tripId}/{fileName} {
+      allow read: if hasTripAccess(tripId);
+      allow write: if isCoOwner(tripId);
+    }
+    ```
+*   **`/files/{tripId}/{noteId}/{fileName}`** — one object per `FILE` note (item 9), same shape as
+    the existing `/pkpass/{tripId}/{noteId}/{fileName}` rule:
+    ```javascript
+    match /files/{tripId}/{noteId}/{fileName} {
+      allow read: if hasTripAccess(tripId);
+      allow write: if isCoOwner(tripId);
+    }
+    ```
+    Both blocks are added to the existing `storage.rules` (Phase 3) alongside the `pkpass` match
+    block, reusing its already-defined `hasTripAccess`/`isCoOwner` functions — no new function
+    logic needed, and this needs a `firebase deploy --only storage` once implemented, same manual
+    step every prior Storage/Firestore rules change in this project has needed.
+
+5. Sync Engine Amendments
+--------------------------------
+*   **Event upload/download (item 4)**: Upload writes both `"timezone"` (start) and
+    `"endTimezone"` (end) to the Firestore document (both from the local `startTimezone`/
+    `endTimezone` fields — see section 1's column-reuse note). Download reads `"timezone"` for
+    `startTimezone` (as it already does today) and reads `"endTimezone"`, **falling back to the
+    same value as `"timezone"` when `"endTimezone"` is absent** — this is what makes every
+    pre-Phase-4-synced event document (which only ever had `"timezone"`) load correctly with no
+    server-side migration: it's interpreted as "start and end both in this one timezone," which is
+    exactly what it meant before this phase existed.
+*   **Trip cover photo upload (item 6)**: When `localCoverPhotoPath` is non-null (staged by either
+    the auto-fetch job or a user's manual pick), upload that file to Storage at
+    `coverPhotoStoragePath` (`trips/{tripId}/cover.jpg`), independently retryable exactly like a
+    Pkpass/File note's attachment (a transient Storage failure doesn't block the trip document's
+    own fields from syncing). Once the upload succeeds, clear `localCoverPhotoPath` and delete the
+    local cached file. `coverPhotoStoragePath`/`coverPhotoSource` upload to Firestore as plain
+    trip-document fields whether or not the Storage upload has completed yet (same "write the
+    reference before the bytes necessarily exist" reasoning Pkpass already established).
+*   **Trip cover photo download**: identical to every other trip field — downloads and
+    overwrites/inserts the local Room record as part of the existing trip sync path; the Storage
+    object itself is only read (by Coil, on demand, for display) never specially handled by
+    `SyncWorker`.
+*   **`FILE` note upload/download/delete (item 9)**: `SyncWorker.kt`'s existing `PKPASS`-specific
+    branches (upload-with-attachment, best-effort delete of the Storage object) are generalized to
+    also cover `NoteType.FILE` — same logic, keyed off `note.type in (PKPASS, FILE)` instead of a
+    single type, since the upload/download/delete shape (stage locally → upload to a
+    content-derived `storagePath` → mark synced once both the Storage write and the Firestore
+    write succeed → best-effort Storage delete on note delete) is identical for both. No new sync
+    code path, just a widened condition on the existing one.
+*   **`GOOGLE_DRIVE` picker-content sync**: no special handling — it's still a plain `content`
+    string field on a `Note` document, synced exactly like every other note type already is; only
+    the app's *rendering* of that string (section 3) needs to know about the two possible shapes.
+*   **Firestore Security Rules**: no changes needed for any Phase 4 item — the existing
+    `notes`/`trips` subcollection rules already govern the whole document regardless of `type`/
+    field shape, same conclusion Phase 3 reached for its own new fields.
+
+6. Local-Only Preferences
+--------------------------------
+No new DataStore preference keys needed for Phase 4 — every local-only piece of state introduced
+above (`endTimezone` fallback logic, `localCoverPhotoPath`, invalid-event flagging) lives on the
+relevant Room entity or is computed on the fly, not stored as a device-wide preference.
+
+7. Room Migration (Schema Version 2 → 3)
+------------------------------------------------
+Every change above is either a rename-in-Kotlin-only (no SQL needed, `startTimezone`) or an
+additive nullable column — the same "single straightforward migration" pattern Phase 3 used for
+its version 1 → 2 bump:
+```sql
+ALTER TABLE events ADD COLUMN endTimezone TEXT;
+UPDATE events SET endTimezone = timezone;
+ALTER TABLE trips  ADD COLUMN coverPhotoStoragePath TEXT;
+ALTER TABLE trips  ADD COLUMN coverPhotoSource TEXT;
+ALTER TABLE trips  ADD COLUMN localCoverPhotoPath TEXT;
+```
+(`events.timezone` needs no SQL change at all — only its Kotlin property name changes, to
+`startTimezone` via `@ColumnInfo(name = "timezone")`; the physical column is untouched. `notes`
+needs no SQL change either — `FILE` is a new enum value stored as plain TEXT like every other
+`NoteType`, and `localAttachmentPath` already exists from Phase 3.)
+
+`AppDatabase.version` moves to `3`, and this `Migration(2, 3)` is registered on the
+`Room.databaseBuilder` in `DatabaseModule.kt` alongside the existing `MIGRATION_1_2`. No data is
+lost; the `endTimezone` backfill means every existing event's behavior is unchanged until a user
+edits it, and the three new trip columns default to `NULL` (no cover photo yet — same as today's
+actual behavior, just now representable instead of implied by a missing feature).
+
+8. Updated Schema Reference (Full, Post-Phase-4)
+--------------------------------------------------------
+### `trips`
+id, destination, startDate, endDate, collaborators, defaultTimezone, `coverPhotoStoragePath`
+(new), `coverPhotoSource` (new), createdAt, updatedAt, syncState, lastSyncedAt
+*(local-only, not synced: `coverPhotoStoragePath`/`coverPhotoSource` above ARE synced — the
+local-only addition is a separate column:)* `localCoverPhotoPath` (new, local-only)
+
+### `events`
+id, tripId, title, category, location, `startTimezone` (renamed from `timezone`, same physical
+column), `endTimezone` (new), startDate, startTime, endDate, endTime, description, flightNumber,
+departureAirportCode, arrivalAirportCode, bookingNumber, createdAt, updatedAt, syncState,
+lastSyncedAt
+
+### `notes`
+id, tripId, eventId, title, type (gains `FILE`), content, createdAt, updatedAt, syncState,
+lastSyncedAt, localAttachmentPath (now also used by `FILE`, not just `PKPASS`)
+
+### `reminders`, `packing_templates`
+Unchanged from Phase 3.

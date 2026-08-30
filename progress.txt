@@ -1,5 +1,5 @@
-Phase: 3
-Step: mockup images - designmockups populated, pending developer confirmation
+Phase: 4
+Step: mockup images - designmockups published, pending developer confirmation
 Current: Phase 2 implementation plan is complete (Blocks 1-5, including publishing manual).
 Phase 3 (Settings, Sync Visibility, Richer Notes & Events): description_detail.txt, techstack.txt,
 and datastructure.txt all confirmed by developer. For the mockup step, this environment had no
@@ -255,5 +255,169 @@ confirm each auto-classifies correctly.
 
 Note: Do not make builds. Everything is built outside the container
 
+======================================================================
+Phase 4 (Bug Fixes & Small Extensions) started at the developer's request, even though Phase 3
+Block 5's Step 5.6 on-device verification (above) is still outstanding — the two are independent
+and not blocking each other.
+
+Phase description review step: read DesignDocs/Phase4/description.txt (7 bugs) and
+DesignDocs/Phase4/extensions.txt (3 extensions, added by the developer just now). Researched
+current behavior for every item before asking questions (date pickers have no trip-scoped
+default/bound anywhere; no text field sets KeyboardCapitalization; Add Note never navigates
+anywhere after creating; EventEntity has one shared `timezone` column; the trip-default-timezone
+bug is already implemented from Phase 3; TripEntity has no image field and Phase 1's
+techstack.txt planned one (Google Places Photos + Unsplash fallback + user override + offline
+templates, `coil-compose` added for it) that was never built; there's no trip date-editing UI
+despite a Phase 3 `TripSettings.dc.html` mockup existing (it only ended up covering the
+default-timezone dialog); Phase 3's own techstack.txt §5 already investigated and rejected the
+Drive-SAF-picker premise in extensions.txt item A; the Pkpass "coming soon" report in extensions.txt
+item C is stale, already fixed in the "Phase 3: Block 5" commit).
+
+Asked and got answers on the 4 genuinely open questions:
+* Bug 1 (date picker "start of trip"): default/pre-scroll only, not a hard minimum — a hard bound
+  would conflict with Bug 7's "allow out-of-range events, just flag them."
+* Bug 2 (auto-capitalize scope): all free-text fields, excluding structured/code-like ones
+  (flight number, airport codes, booking number, URLs).
+* Bug 6 (trip image): build the full original Phase 1 plan (Places API primary, Unsplash
+  fallback, user-upload override, offline illustration templates as last resort) rather than a
+  cut-down version.
+* Extension A (Drive SAF picker): developer chose to build it anyway despite the verified
+  limitation, explicitly as single-device/account convenience only (not cross-collaborator
+  sharing) — the UI must make this limitation clear rather than silently failing on another
+  device.
+
+Wrote DesignDocs/Phase4/description_detail.txt covering all 7 bugs + 3 extensions with the above
+scope decisions. Extension C requires no implementation (already fixed) — will be marked
+`[COMPLETED]` in extensions.txt with that explanation once the implementation step begins, no
+separate build/verify step for it. Pending developer confirmation of description_detail.txt
+before moving to the Tech Stack step.
+
+Before that confirmation, the developer asked to check Phase 1-3 for other planned-but-unexecuted
+work (the same class of gap as Bug 6's trip photos). Audit found two:
+* Phase 1 techstack.txt §6-7 proposed four external data services (destination/location
+  autocomplete via Google Places/Mapbox, weather via WeatherAPI.com/OpenWeatherMap, currency
+  conversion via ExchangeRate-API, real-time flight tracking via Aviation Edge API) plus the
+  networking client needed to call them (Retrofit/Ktor) — none were ever built, not in any of the
+  9 Phase 1-3 implementation-plan blocks, and never marked cut/out-of-scope anywhere. The app
+  makes zero external REST calls today (Firebase SDK calls only).
+* Phase 2 Block 5 only produced a publishing *manual* — implementation_plan.txt's own Block 5
+  verification step says the developer executes it "at their own pace, outside this plan," and
+  there was no record (verification report or progress.txt entry) confirming the Play Console
+  app/testers were actually set up.
+
+Developer's decisions: the Phase 1 gap is logged as a new placeholder phase (DesignDocs/Phase5/
+description.txt, not started, normal phase process applies when picked up) rather than folded
+into Phase 4's scope — genuinely new features/dependencies, not bug fixes. Phase 2's publishing
+was in fact done by the developer outside the tracked process — confirmed complete, no further
+action.
+
 Note: DesignDocs/Phase4/description.txt already exists (a bug list, staged in git as a rename
 from DesignDocs/Phase3/bugs.txt) — this is future work, not touched yet.
+
+Developer merged the 3 extensions.txt items into description.txt directly (extensions.txt is now
+empty, present but unused) — description.txt is 10 items total, processed as one list with no
+bugs-vs-extensions split. Also updated the pkpass item's wording to add "and I cannot choose a
+file" — a distinct, not-yet-confirmed-stale symptom alongside the already-source-verified-fixed
+"rendering coming soon" text, so description_detail.txt §11 no longer assumes that item needs zero
+code work; its implementation step starts by reproducing on a fresh build/install before deciding.
+description_detail.txt updated to match (structural intro + §9/§11 wording), content otherwise
+unchanged — developer confirmed the items themselves were already correct. Proceeding to the Tech
+Stack step.
+
+Wrote DesignDocs/Phase4/techstack.txt. Only item 6 (trip cover images) needs new
+services/dependencies — everything else reuses infrastructure already in the app (Room, Firebase
+Storage, the Phase 3 Pkpass pick-file/upload/sync pattern, Compose/activity-compose APIs). Key
+decisions: Google Places API (New) Text Search + Place Photo endpoints as the primary photo
+source, Unsplash Search API as fallback, plain OkHttp + kotlinx.serialization for those two calls
+(not Retrofit — deliberately deferred until Phase 5's broader external-service set, if picked up,
+justifies it), Android Photo Picker (`PickVisualMedia`, already available via activity-compose
+1.8.2) for the user-upload override, and built-in vector-icon/gradient illustrations (no new
+assets/dependency) for the offline fallback. Both API keys are developer-provisioned secrets, not
+committed. One small new plumbing piece flagged for item 9 (File notes): a `FileProvider` needs
+configuring (manifest `<provider>` + `file_paths.xml`) to hand downloaded files to
+`ACTION_VIEW`/external apps — no new Gradle dependency, `androidx.core` already has it. Developer
+said "proceed" without further comment — treated as confirmation, moved to Data Structure step.
+
+Wrote DesignDocs/Phase4/datastructure.txt. Key decisions:
+* Event timezone split (item 4): `timezone` column is kept as-is physically and just renamed to
+  `startTimezone` in Kotlin (`@ColumnInfo(name = "timezone")`) — zero new column, zero Firestore
+  key change for the start half. Only `endTimezone` is new (column + Firestore key), backfilled
+  from `timezone` in the migration so every existing event's behavior is unchanged until edited.
+  Download falls back to `"timezone"` when `"endTimezone"` is absent, so pre-Phase-4-synced event
+  docs keep working with no server-side migration.
+* Trip cover photos (item 6): three new nullable trip columns — `coverPhotoStoragePath` (synced,
+  deterministic `trips/{tripId}/cover.jpg`), `coverPhotoSource` (synced, AUTO_PLACES/
+  AUTO_UNSPLASH/USER, so the auto-fetch job never clobbers an already-set photo), and
+  `localCoverPhotoPath` (local-only staging column, mirrors NoteEntity's `localAttachmentPath`).
+  Important call-out: auto-fetched photos (Places/Unsplash) get re-uploaded to our own Firebase
+  Storage rather than storing the provider's URL directly — Places' Photo Media URL requires the
+  API key on every request, so storing it in a synced Firestore doc would leak the key to every
+  collaborator's device; downloading once and re-hosting avoids that.
+* New `FILE` note type (item 9): reuses Phase 3's `localAttachmentPath` column as-is (broadened
+  comment, no new column) and generalizes `SyncWorker`'s existing PKPASS-only upload/download/
+  delete branches to `note.type in (PKPASS, FILE)` — no new sync code path.
+* Drive SAF picker (item 8): no new column/type — `GOOGLE_DRIVE` notes' existing `content` string
+  field just gains a second possible shape (a small JSON object with `uri`/`displayName` instead
+  of a plain URL string), distinguished at render time by attempting a JSON parse first, same
+  pattern PKPASS/FILE already use to store structured content.
+* Two new Storage rule blocks (`/trips/{tripId}/{fileName}`, `/files/{tripId}/{noteId}/{fileName}`)
+  added to the existing storage.rules, reusing its already-defined helper functions — needs a
+  `firebase deploy --only storage` once implemented.
+* Room migration version 2 -> 3, purely additive/rename, no data loss, no destructive changes.
+
+Developer said "proceed" — treated as confirmation, moved to the Mockups step.
+
+Built DesignDocs/Phase4/designmockups/ via the /design skill's canvas (same approach as Phase 3 —
+this environment has no direct image-generation tool), reusing Phase 3's real palette/typeface
+(Color.kt/Type.kt) and, for screens being extended rather than introduced, the real Phase 3
+.dc.html markup itself (AddNote.dc.html, AddEventFlight.dc.html, TripSettings.dc.html) and
+HomeScreen.kt's actual LargeTripCard/SmallTripCard treatment as the starting point. 7 artboards,
+matching Phase 3's scope: Home w/ cover photos (auto-fetched + illustration-fallback states), Add
+Trip photo section, Trip Settings expanded to a full screen with editable dates + photo override,
+Add Event with the new dual-timezone fields, an invalid-event badge + fix-it banner, Add Note with
+the new File option + Drive-picker button, and Opened Note states for File/Drive notes. Published,
+exportable canvas at https://claude.ai/code/artifact/3cfa6d46-c541-4f02-9fdc-88abe9f86ecd; a
+background review pass (checking the working .dc.html files against the brief and the real app
+source) was kicked off after publishing, not yet back. Pending developer confirmation of the
+mockups before moving to the Implementation Plan step.
+
+Redone at the developer's request: "DO NOT upload anything. Only local png allowed" — the canvas
+approach above published a link to claude.ai, which the developer explicitly ruled out. Replaced
+with 7 flat PNGs (same screens/scope as above) rendered entirely locally: installed Pillow via apt
+(python3-pil, a local package install, not an upload) and wrote a small script that draws each
+screen directly as a bitmap — colors/type read from the real Color.kt/Type.kt (DejaVu Sans
+standing in locally for the app's Google-Fonts-loaded Outfit), simplified hand-drawn icons in
+place of the exact vector glyphs. Iterated on layout by rendering and visually reading back each
+PNG (a few overflow/spacing bugs fixed this way: a caption running off the Trip Settings timezone
+card, an empty stray field next to Flight number, the Add Note type-picker list box being cut a
+row short). Old .dc.html/canvas.json/exported-canvas-html files and the published-link reference
+removed from designmockups/ and its README; nothing from this pass was uploaded or published
+anywhere. Developer confirmed ("ok, proceed"). Mockups step complete.
+
+Step: implementation plan — written, pending developer confirmation
+Wrote DesignDocs/Phase4/implementation_plan.txt (8 blocks) after reading the actual app source
+(entities, repositories, ViewModels, SyncWorker, OpenedTripScreen/OpenedEventScreen/HomeScreen,
+MainActivity nav, PkpassParser) rather than working from the design docs alone, per instructions.txt's
+"detailed enough to resume with only design docs and code as context." Block order: 1 (schema/deps/
+FileProvider/API-key scaffolding, no behavior change), 2 (bugs 1-3: date-picker default,
+auto-capitalize, add-note-opens-editor — bundled, all trivial/independent), 3 (bug 4-5: dual event
+timezones), 4 (bug 7: Trip Settings dialog -> full screen with editable dates + invalid-event
+flagging), 5 (bug 6: trip cover photos — Places/Unsplash/manual override/illustration fallback), 6
+(extension A: Drive SAF picker), 7 (extension B: File note type), 8 (extension C: pkpass picker bug
+— reproduce first, fix only if it reproduces).
+
+Three things the research surfaced are flagged at the top of the plan for the developer to
+confirm/override, each already resolved with a documented default rather than left open:
+* `trip.defaultTimezone` (a real Phase 3 column) is never actually included in SyncWorker's trip
+  upload/download maps — a genuine pre-existing cross-device sync gap, not one of the 10 listed
+  items. Fixed opportunistically in Block 5 Step 5.4, which already touches that same map for the
+  new cover-photo fields.
+* `buildItinerary()`'s day range is bounded strictly to the trip's own dates, so an event entirely
+  outside that range (which Bug 1 now explicitly allows creating) would have no day slot to render
+  under and be unreachable in the UI — Block 4 Step 4.3 extends the day range to cover such events
+  too, as a precondition for the invalid-flagging feature to be reachable at all.
+* No event field is timezone-converted for display anywhere in the app today (times render exactly
+  as typed). Block 3 is scoped to two independently editable/synced fields, not new conversion
+  display logic — flagged so this isn't mistaken for a missed requirement.
+
+Pending developer confirmation of implementation_plan.txt before starting Block 1.
