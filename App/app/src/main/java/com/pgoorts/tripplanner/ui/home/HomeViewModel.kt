@@ -79,7 +79,7 @@ class HomeViewModel @Inject constructor(
             )
             if (stagedCoverPhotoPath == null) {
                 launch {
-                    val result = CoverPhotoFetcher.fetchCoverPhoto(trip.destination) ?: return@launch
+                    val result = CoverPhotoFetcher.fetchCoverPhoto(context, trip.destination) ?: return@launch
                     // Re-read before writing — a manual override from Trip Settings could have
                     // raced this fetch and already set a source, which must never be clobbered.
                     val current = tripRepository.getTripById(trip.id).first()

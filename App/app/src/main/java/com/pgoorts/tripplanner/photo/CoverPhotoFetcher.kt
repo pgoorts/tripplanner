@@ -1,5 +1,8 @@
 package com.pgoorts.tripplanner.photo
 
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import com.pgoorts.tripplanner.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +18,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.security.MessageDigest
 
 /** One of the values TripEntity.coverPhotoSource can hold, per datastructure.txt §2. */
 object CoverPhotoSource {
@@ -38,18 +42,60 @@ object CoverPhotoFetcher {
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json".toMediaType()
 
-    suspend fun fetchCoverPhoto(destination: String): CoverPhotoResult? = withContext(Dispatchers.IO) {
+    suspend fun fetchCoverPhoto(context: Context, destination: String): CoverPhotoResult? = withContext(Dispatchers.IO) {
         Log.d(TAG, "fetchCoverPhoto(\"$destination\") starting")
-        fetchFromPlaces(destination)?.let { return@withContext CoverPhotoResult(it, CoverPhotoSource.AUTO_PLACES) }
+        fetchFromPlaces(context, destination)?.let { return@withContext CoverPhotoResult(it, CoverPhotoSource.AUTO_PLACES) }
         fetchFromUnsplash(destination)?.let { return@withContext CoverPhotoResult(it, CoverPhotoSource.AUTO_UNSPLASH) }
         Log.w(TAG, "fetchCoverPhoto(\"$destination\") found nothing from either source")
         null
     }
 
-    private fun fetchFromPlaces(destination: String): ByteArray? {
+    /**
+     * The Places API key is restricted to this app's package + signing cert in Cloud Console.
+     * Direct REST calls (as opposed to the Places SDK) must prove that identity themselves via
+     * these headers, or Google rejects the request with API_KEY_ANDROID_APP_BLOCKED.
+     */
+    private fun androidAppHeaders(context: Context): Pair<String, String>? {
+        val packageName = context.packageName
+        val sha1 = signingCertSha1(context) ?: return null
+        return packageName to sha1
+    }
+
+    private fun signingCertSha1(context: Context): String? {
+        return try {
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val info = context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                val signingInfo = info.signingInfo ?: return null
+                if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners else signingInfo.signingCertificateHistory
+            } else {
+                @Suppress("DEPRECATION")
+                val info = context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNATURES
+                )
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            val cert = signatures?.firstOrNull() ?: return null
+            val digest = MessageDigest.getInstance("SHA-1").digest(cert.toByteArray())
+            digest.joinToString("") { "%02X".format(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not compute signing cert SHA-1 for Android key restriction", e)
+            null
+        }
+    }
+
+    private fun fetchFromPlaces(context: Context, destination: String): ByteArray? {
         val apiKey = BuildConfig.PLACES_API_KEY
         if (apiKey.isBlank()) {
             Log.w(TAG, "Places skipped: PLACES_API_KEY is blank (not set in local.properties at build time)")
+            return null
+        }
+        val (androidPackage, androidCert) = androidAppHeaders(context) ?: run {
+            Log.w(TAG, "Places skipped: could not resolve package/signing cert for X-Android-* headers")
             return null
         }
         return try {
@@ -59,6 +105,8 @@ object CoverPhotoFetcher {
                 .url("https://places.googleapis.com/v1/places:searchText")
                 .addHeader("X-Goog-Api-Key", apiKey)
                 .addHeader("X-Goog-FieldMask", "places.photos")
+                .addHeader("X-Android-Package", androidPackage)
+                .addHeader("X-Android-Cert", androidCert)
                 .post(body)
                 .build()
 
@@ -88,6 +136,8 @@ object CoverPhotoFetcher {
 
             val mediaRequest = Request.Builder()
                 .url("https://places.googleapis.com/v1/$photoName/media?maxWidthPx=800&key=$apiKey")
+                .addHeader("X-Android-Package", androidPackage)
+                .addHeader("X-Android-Cert", androidCert)
                 .build()
             client.newCall(mediaRequest).execute().use { response ->
                 if (!response.isSuccessful) {
