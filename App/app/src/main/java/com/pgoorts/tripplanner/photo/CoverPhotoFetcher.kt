@@ -1,5 +1,6 @@
 package com.pgoorts.tripplanner.photo
 
+import android.util.Log
 import com.pgoorts.tripplanner.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,18 +33,25 @@ data class CoverPhotoResult(val bytes: ByteArray, val source: String)
  */
 object CoverPhotoFetcher {
 
+    private const val TAG = "CoverPhotoFetcher"
+
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json".toMediaType()
 
     suspend fun fetchCoverPhoto(destination: String): CoverPhotoResult? = withContext(Dispatchers.IO) {
+        Log.d(TAG, "fetchCoverPhoto(\"$destination\") starting")
         fetchFromPlaces(destination)?.let { return@withContext CoverPhotoResult(it, CoverPhotoSource.AUTO_PLACES) }
         fetchFromUnsplash(destination)?.let { return@withContext CoverPhotoResult(it, CoverPhotoSource.AUTO_UNSPLASH) }
+        Log.w(TAG, "fetchCoverPhoto(\"$destination\") found nothing from either source")
         null
     }
 
     private fun fetchFromPlaces(destination: String): ByteArray? {
         val apiKey = BuildConfig.PLACES_API_KEY
-        if (apiKey.isBlank()) return null
+        if (apiKey.isBlank()) {
+            Log.w(TAG, "Places skipped: PLACES_API_KEY is blank (not set in local.properties at build time)")
+            return null
+        }
         return try {
             val body = """{"textQuery":"${destination.replace("\"", "\\\"")}"}"""
                 .toRequestBody(jsonMediaType)
@@ -55,30 +63,53 @@ object CoverPhotoFetcher {
                 .build()
 
             val photoName = client.newCall(searchRequest).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val json = Json.parseToJsonElement(response.body?.string() ?: return null).jsonObject
-                val places = json["places"]?.jsonArray ?: return null
+                val responseBody = response.body?.string()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Places searchText failed: HTTP ${response.code} — $responseBody")
+                    return null
+                }
+                val json = Json.parseToJsonElement(responseBody ?: run {
+                    Log.w(TAG, "Places searchText returned an empty body")
+                    return null
+                }).jsonObject
+                val places = json["places"]?.jsonArray
+                if (places == null) {
+                    Log.w(TAG, "Places searchText returned no \"places\" for \"$destination\": $responseBody")
+                    return null
+                }
                 places.firstNotNullOfOrNull { place ->
                     (place.jsonObject["photos"] as? JsonArray)?.firstOrNull()
                         ?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
                 }
-            } ?: return null
+            } ?: run {
+                Log.w(TAG, "Places searchText returned no place with a photo for \"$destination\"")
+                return null
+            }
 
             val mediaRequest = Request.Builder()
                 .url("https://places.googleapis.com/v1/$photoName/media?maxWidthPx=800&key=$apiKey")
                 .build()
             client.newCall(mediaRequest).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.bytes()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Places photo media fetch failed: HTTP ${response.code} — ${response.body?.string()}")
+                    null
+                } else {
+                    Log.d(TAG, "Places photo fetched successfully for \"$destination\"")
+                    response.body?.bytes()
+                }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Places fetch threw for \"$destination\"", e)
             null
         }
     }
 
     private fun fetchFromUnsplash(destination: String): ByteArray? {
         val accessKey = BuildConfig.UNSPLASH_ACCESS_KEY
-        if (accessKey.isBlank()) return null
+        if (accessKey.isBlank()) {
+            Log.w(TAG, "Unsplash skipped: UNSPLASH_ACCESS_KEY is blank (not set in local.properties at build time)")
+            return null
+        }
         return try {
             val url = HttpUrl.Builder()
                 .scheme("https")
@@ -93,18 +124,38 @@ object CoverPhotoFetcher {
                 .build()
 
             val photoUrl = client.newCall(searchRequest).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val json = Json.parseToJsonElement(response.body?.string() ?: return null).jsonObject
-                val results = json["results"]?.jsonArray ?: return null
+                val responseBody = response.body?.string()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Unsplash search failed: HTTP ${response.code} — $responseBody")
+                    return null
+                }
+                val json = Json.parseToJsonElement(responseBody ?: run {
+                    Log.w(TAG, "Unsplash search returned an empty body")
+                    return null
+                }).jsonObject
+                val results = json["results"]?.jsonArray
+                if (results == null) {
+                    Log.w(TAG, "Unsplash search returned no \"results\" for \"$destination\": $responseBody")
+                    return null
+                }
                 results.firstOrNull()?.jsonObject?.get("urls")?.jsonObject?.get("regular")?.jsonPrimitive?.contentOrNull
-            } ?: return null
+            } ?: run {
+                Log.w(TAG, "Unsplash search returned no usable photo URL for \"$destination\"")
+                return null
+            }
 
             val imageRequest = Request.Builder().url(photoUrl).build()
             client.newCall(imageRequest).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.bytes()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Unsplash image download failed: HTTP ${response.code}")
+                    null
+                } else {
+                    Log.d(TAG, "Unsplash photo fetched successfully for \"$destination\"")
+                    response.body?.bytes()
+                }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Unsplash fetch threw for \"$destination\"", e)
             null
         }
     }

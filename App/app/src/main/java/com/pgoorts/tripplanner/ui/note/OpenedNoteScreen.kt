@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -332,7 +334,13 @@ fun OpenedNoteScreen(
                             }
                         }
                         if (parsedContent != null) {
-                            PkpassCard(parsedContent)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                PkpassCard(parsedContent)
+                            }
                         } else {
                             Text("Unable to load this pass.", color = Grey500)
                         }
@@ -676,6 +684,29 @@ private fun PkpassCard(content: PkpassContent) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) {
+                    if (barcodeBitmap != null) {
+                        Image(
+                            bitmap = barcodeBitmap.asImageBitmap(),
+                            contentDescription = "Pass barcode",
+                            modifier = Modifier.size(180.dp)
+                        )
+                    } else {
+                        Text("Unable to render barcode", color = Navy900)
+                    }
+                    if (content.serialNumber.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(content.serialNumber, style = MaterialTheme.typography.labelSmall, color = Grey700, letterSpacing = 2.sp)
+                    }
+                }
+            }
+
+            Divider(color = Grey700, modifier = Modifier.padding(vertical = 8.dp))
+
             Text(
                 content.organizationName.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
@@ -705,29 +736,6 @@ private fun PkpassCard(content: PkpassContent) {
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(10.dp))
-                }
-            }
-
-            Divider(color = Grey700, modifier = Modifier.padding(vertical = 8.dp))
-
-            Surface(color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)
-                ) {
-                    if (barcodeBitmap != null) {
-                        Image(
-                            bitmap = barcodeBitmap.asImageBitmap(),
-                            contentDescription = "Pass barcode",
-                            modifier = Modifier.size(180.dp)
-                        )
-                    } else {
-                        Text("Unable to render barcode", color = Navy900)
-                    }
-                    if (content.serialNumber.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(content.serialNumber, style = MaterialTheme.typography.labelSmall, color = Grey700, letterSpacing = 2.sp)
-                    }
                 }
             }
         }

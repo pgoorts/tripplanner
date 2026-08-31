@@ -669,3 +669,60 @@ Block 5 API keys and running `firebase deploy --only storage`.
 
 Once the developer builds, verifies each block's checklist, and deploys the storage rules, every
 item in description.txt can be marked `[COMPLETED]` and Phase 4 is done.
+
+======================================================================
+Developer built and tested all 8 blocks; reported 4 bugs in DesignDocs/Phase4/bugs.txt. Fixed 3,
+diagnosed/instrumented the 4th (needs a re-test to pin down):
+
+1. Pkpass rendering — no scroll, text cut off, barcode invisible [FIXED]: `OpenedNoteScreen.kt`'s
+   PKPASS branch had no scroll container at all (unlike Checklist's own `LazyColumn`), so a pass
+   with several fields pushed the barcode (rendered last, at the bottom of `PkpassCard`) off-screen
+   with no way to reach it. Wrapped the PKPASS branch's content in its own
+   `Modifier.weight(1f).verticalScroll(rememberScrollState())` Column (scoped to just this branch,
+   since Text Block/Checklist already manage their own scrolling via `weight(1f)` and can't share a
+   scrollable outer Column). Also reordered `PkpassCard` per the developer's explicit ask: the
+   barcode/QR surface now renders first, organization/description/fields below it.
+
+2. Add Event timezone fields "cannot be edited" [FIXED]: both fields used a bare
+   `OutlinedTextField(readOnly = true).clickable { ... }` to open `TimezonePickerDialog` — a pattern
+   that's unreliable in Compose because a readOnly text field's own internal tap handling competes
+   with the outer `clickable` modifier for the touch event. `DatePickerField.kt` (same file's
+   neighbor component) already solved this correctly with a transparent `Box.matchParentSize()
+   .pointerInput { detectTapGestures {...} }` overlay on top of the field instead of `.clickable` —
+   applied that same proven pattern to both Start/End (Departure/Arrival) timezone fields in
+   `OpenedTripScreen.kt`'s `AddEventDialog`.
+
+3. Edit Event timezone fields — can't search, typing appends and can't be removed [FIXED]: this was
+   a pre-existing bug from Phase 3 (verified via `git show` on the pre-Phase-4 single-timezone-field
+   version — Block 3 just copy-pasted it into two fields per the plan's own instruction to
+   "duplicate its existing inline picker"). Root cause: the visible anchor `OutlinedTextField` inside
+   `ExposedDropdownMenuBox` was NOT read-only — its `onValueChange` wrote keystrokes directly into
+   `startTimezone`/`endTimezone` (the actual field value) while *also* driving the separate search
+   query used to filter the dropdown list below, so the visible field and the "real" selected value
+   were tangled together with no clean way to distinguish "editing the search" from "the selected
+   result." Replaced both fields in `OpenedEventScreen.kt` with the same readOnly-field +
+   `TimezonePickerDialog` modal pattern now used everywhere else in the app (Add Event, Trip
+   Settings) — removed the now-unused `ExposedDropdownMenuBox`/search-query/filtered-list state
+   entirely rather than patching it in place.
+
+4. No trip cover photo fetched, zero Places API calls seen in Cloud Console [NOT YET FIXED —
+   instrumented for next test]: read through `CoverPhotoFetcher.kt`, `HomeViewModel.createTrip()`,
+   and the `build.gradle.kts` API-key wiring; the request-construction code matches Google's
+   documented Places API (New) contract, `App/local.properties` does have a real-looking
+   `PLACES_API_KEY` set (uncommented, correct format), and the trigger path in `HomeViewModel`
+   only skips the auto-fetch when the user manually picked their own photo — none of that explains
+   zero calls. The likely blocker is outside this code (Places API (New) not enabled, or billing not
+   configured, on that Google Cloud project/key — a disabled API can bounce a request before it's
+   logged as a call to that specific API at all) but this couldn't be confirmed without live
+   device/network access in this environment. What *was* a genuine gap: every failure path in
+   `CoverPhotoFetcher` returned `null` silently with no logging, so `logcat.txt` had nothing to show
+   even though the developer explicitly checked it — added `Log.d/w/e` (tag `CoverPhotoFetcher`) at
+   every branch (key blank, non-2xx HTTP with status+body, empty/malformed JSON, thrown exception,
+   success) for both Places and Unsplash. Ask the developer to retry creating a trip and grep logcat
+   for `CoverPhotoFetcher` — that will show definitively whether the key was actually blank at build
+   time, whether a request went out and got rejected (and with what status/body), or whether it
+   threw, which will point to the real fix (most likely a Cloud Console setting, in which case no
+   further code change is needed here).
+
+Not built in-container per the standing preference; developer verifies all 4 on next build/install.
+`DesignDocs/Phase4/bugs.txt` items 1-3 marked `[COMPLETED]`, item 4 left open pending the retest.

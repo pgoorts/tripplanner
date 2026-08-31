@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -49,6 +51,7 @@ import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.components.isoDateToEpochMillis
 import com.pgoorts.tripplanner.ui.components.TimePickerField
+import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
 import com.pgoorts.tripplanner.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -56,7 +59,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
@@ -103,28 +105,8 @@ fun OpenedEventScreen(
     var pendingDeleteReminder by remember { mutableStateOf<ReminderEntity?>(null) }
 
     var isDropdownExpanded by remember { mutableStateOf(false) }
-    var isStartTimezoneExpanded by remember { mutableStateOf(false) }
-    var isEndTimezoneExpanded by remember { mutableStateOf(false) }
-    var startTimezoneSearchQuery by remember { mutableStateOf("") }
-    var endTimezoneSearchQuery by remember { mutableStateOf("") }
-
-    val commonTimezones = remember {
-        ZoneId.getAvailableZoneIds().sorted()
-    }
-    val filteredStartTimezones = remember(startTimezoneSearchQuery) {
-        if (startTimezoneSearchQuery.isBlank()) {
-            commonTimezones.take(20)
-        } else {
-            commonTimezones.filter { it.contains(startTimezoneSearchQuery, ignoreCase = true) }.take(20)
-        }
-    }
-    val filteredEndTimezones = remember(endTimezoneSearchQuery) {
-        if (endTimezoneSearchQuery.isBlank()) {
-            commonTimezones.take(20)
-        } else {
-            commonTimezones.filter { it.contains(endTimezoneSearchQuery, ignoreCase = true) }.take(20)
-        }
-    }
+    var showStartTimezonePicker by remember { mutableStateOf(false) }
+    var showEndTimezonePicker by remember { mutableStateOf(false) }
 
     // Initialize form states when event is loaded
     LaunchedEffect(uiState.event) {
@@ -319,94 +301,46 @@ fun OpenedEventScreen(
                             EventCategory.FLIGHT -> "Departure timezone" to "Arrival timezone"
                             else -> "Start timezone" to "End timezone"
                         }
-                        ExposedDropdownMenuBox(
-                            expanded = isStartTimezoneExpanded && canEdit,
-                            onExpandedChange = { if (canEdit) isStartTimezoneExpanded = it }
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
                                 value = startTimezone,
-                                onValueChange = {
-                                    startTimezone = it
-                                    startTimezoneSearchQuery = it
-                                },
+                                onValueChange = {},
+                                readOnly = true,
                                 enabled = canEdit,
                                 label = { Text(timezoneFieldLabels.first, color = Grey500) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isStartTimezoneExpanded && canEdit) },
+                                trailingIcon = { Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500) },
                                 colors = tripTextFieldColors(),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .menuAnchor()
+                                modifier = Modifier.fillMaxWidth()
                             )
-                            ExposedDropdownMenu(
-                                expanded = isStartTimezoneExpanded,
-                                onDismissRequest = { isStartTimezoneExpanded = false },
-                                modifier = Modifier.background(Navy700)
-                            ) {
-                                // Search bar inside menu to filter
-                                OutlinedTextField(
-                                    value = startTimezoneSearchQuery,
-                                    onValueChange = { startTimezoneSearchQuery = it },
-                                    placeholder = { Text("Search timezone...", color = Grey500) },
-                                    singleLine = true,
-                                    colors = tripTextFieldColors(),
+                            if (canEdit) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
-                                )
-                                filteredStartTimezones.forEach { zone ->
-                                    DropdownMenuItem(
-                                        text = { Text(zone, color = White) },
-                                        onClick = {
-                                            startTimezone = zone
-                                            isStartTimezoneExpanded = false
+                                        .matchParentSize()
+                                        .pointerInput(Unit) {
+                                            detectTapGestures { showStartTimezonePicker = true }
                                         }
-                                    )
-                                }
+                                )
                             }
                         }
-                        ExposedDropdownMenuBox(
-                            expanded = isEndTimezoneExpanded && canEdit,
-                            onExpandedChange = { if (canEdit) isEndTimezoneExpanded = it }
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
                                 value = endTimezone,
-                                onValueChange = {
-                                    endTimezone = it
-                                    endTimezoneSearchQuery = it
-                                },
+                                onValueChange = {},
+                                readOnly = true,
                                 enabled = canEdit,
                                 label = { Text(timezoneFieldLabels.second, color = Grey500) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isEndTimezoneExpanded && canEdit) },
+                                trailingIcon = { Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500) },
                                 colors = tripTextFieldColors(),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .menuAnchor()
+                                modifier = Modifier.fillMaxWidth()
                             )
-                            ExposedDropdownMenu(
-                                expanded = isEndTimezoneExpanded,
-                                onDismissRequest = { isEndTimezoneExpanded = false },
-                                modifier = Modifier.background(Navy700)
-                            ) {
-                                // Search bar inside menu to filter
-                                OutlinedTextField(
-                                    value = endTimezoneSearchQuery,
-                                    onValueChange = { endTimezoneSearchQuery = it },
-                                    placeholder = { Text("Search timezone...", color = Grey500) },
-                                    singleLine = true,
-                                    colors = tripTextFieldColors(),
+                            if (canEdit) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp)
-                                )
-                                filteredEndTimezones.forEach { zone ->
-                                    DropdownMenuItem(
-                                        text = { Text(zone, color = White) },
-                                        onClick = {
-                                            endTimezone = zone
-                                            isEndTimezoneExpanded = false
+                                        .matchParentSize()
+                                        .pointerInput(Unit) {
+                                            detectTapGestures { showEndTimezonePicker = true }
                                         }
-                                    )
-                                }
+                                )
                             }
                         }
 
@@ -580,6 +514,19 @@ fun OpenedEventScreen(
                 }
             }
         }
+    }
+
+    if (showStartTimezonePicker) {
+        TimezonePickerDialog(
+            onDismiss = { showStartTimezonePicker = false },
+            onSelect = { zone -> startTimezone = zone; showStartTimezonePicker = false }
+        )
+    }
+    if (showEndTimezonePicker) {
+        TimezonePickerDialog(
+            onDismiss = { showEndTimezonePicker = false },
+            onSelect = { zone -> endTimezone = zone; showEndTimezonePicker = false }
+        )
     }
 
     if (showAddNoteDialog) {

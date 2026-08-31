@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -977,32 +979,46 @@ private fun AddEventDialog(
                     EventCategory.FLIGHT -> "Departure timezone" to "Arrival timezone"
                     else -> "Start timezone" to "End timezone"
                 }
-                OutlinedTextField(
-                    value = startTimezone,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(timezoneLabels.first, color = Grey500) },
-                    trailingIcon = {
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
-                    },
-                    colors = tripTextFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showStartTimezonePicker = true }
-                )
-                OutlinedTextField(
-                    value = endTimezone,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(timezoneLabels.second, color = Grey500) },
-                    trailingIcon = {
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
-                    },
-                    colors = tripTextFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showEndTimezonePicker = true }
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = startTimezone,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(timezoneLabels.first, color = Grey500) },
+                        trailingIcon = {
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
+                        },
+                        colors = tripTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures { showStartTimezonePicker = true }
+                            }
+                    )
+                }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = endTimezone,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(timezoneLabels.second, color = Grey500) },
+                        trailingIcon = {
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Grey500)
+                        },
+                        colors = tripTextFieldColors(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures { showEndTimezonePicker = true }
+                            }
+                    )
+                }
 
                 if (category == EventCategory.FLIGHT) {
                     Text("Flight details", style = MaterialTheme.typography.labelMedium, color = Grey500)
