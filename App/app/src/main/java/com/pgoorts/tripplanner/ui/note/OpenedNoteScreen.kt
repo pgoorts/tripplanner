@@ -12,6 +12,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,19 +32,27 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.FileProvider
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
+import com.pgoorts.tripplanner.data.local.entity.DrivePickerContent
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.files.FileNoteContent
+import com.pgoorts.tripplanner.files.FileNoteHelper
 import com.pgoorts.tripplanner.pkpass.PkpassContent
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 @Composable
@@ -282,80 +291,35 @@ fun OpenedNoteScreen(
                         }
                     }
 
-                    NoteType.WEB_URL, NoteType.GOOGLE_DOC, NoteType.GOOGLE_DRIVE -> {
-                        // URL Link input
-                        OutlinedTextField(
-                            value = textContent,
-                            onValueChange = {
-                                textContent = it
-                                viewModel.updateTextContent(it)
-                            },
-                            readOnly = !canEdit,
-                            label = { Text("Link URL", color = Grey500) },
-                            singleLine = true,
-                            colors = tripTextFieldColors(),
-                            modifier = Modifier.fillMaxWidth()
+                    NoteType.WEB_URL, NoteType.GOOGLE_DOC -> {
+                        LinkNoteContent(
+                            note = note,
+                            textContent = textContent,
+                            onTextChange = { textContent = it; viewModel.updateTextContent(it) },
+                            canEdit = canEdit
                         )
+                    }
 
-                        // Launch/Preview Card
-                        Spacer(Modifier.height(8.dp))
-                        Card(
-                            onClick = {
-                                if (textContent.isNotBlank()) {
-                                    var formattedUrl = textContent.trim()
-                                    if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
-                                        formattedUrl = "https://$formattedUrl"
-                                    }
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(formattedUrl))
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Invalid link or no browser found", Toast.LENGTH_SHORT).show()
-                                    }
-                                } else {
-                                    Toast.makeText(context, "Please enter a URL first", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            colors = CardDefaults.cardColors(containerColor = Navy700),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                val (color, icon) = getNoteTypeVisuals(note.type)
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(color.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = if (textContent.isBlank()) "No link entered" else "Open External Link",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = White
-                                    )
-                                    if (textContent.isNotBlank()) {
-                                        Text(
-                                            text = textContent,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Grey500,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                                Icon(Icons.Filled.OpenInNew, contentDescription = "Open Link", tint = Teal300)
+                    NoteType.GOOGLE_DRIVE -> {
+                        // A picker-based Drive note (Block 6) stores a small JSON object instead
+                        // of a plain URL string — try that shape first, falling back to today's
+                        // plain-URL rendering for a pasted Drive share link (datastructure.txt §3).
+                        val drivePicked = remember(note.content) {
+                            try {
+                                Json.decodeFromString<DrivePickerContent>(note.content)
+                            } catch (e: Exception) {
+                                null
                             }
+                        }
+                        if (drivePicked != null) {
+                            DrivePickerNoteContent(drivePicked)
+                        } else {
+                            LinkNoteContent(
+                                note = note,
+                                textContent = textContent,
+                                onTextChange = { textContent = it; viewModel.updateTextContent(it) },
+                                canEdit = canEdit
+                            )
                         }
                     }
 
@@ -375,9 +339,12 @@ fun OpenedNoteScreen(
                     }
 
                     NoteType.FILE -> {
-                        // Placeholder — Phase 4 Block 7 replaces this with the real file card
-                        // (filename, type/size, Open button) and download-then-ACTION_VIEW flow.
-                        Text("File rendering coming soon.", color = Grey500)
+                        val fileContent = remember(note.content) { FileNoteHelper.parseContent(note.content) }
+                        if (fileContent != null) {
+                            FileNoteCard(noteId = note.id, fileContent = fileContent)
+                        } else {
+                            Text("Unable to load this file.", color = Grey500)
+                        }
                     }
                 }
             }
@@ -437,6 +404,235 @@ fun OpenedNoteScreen(
             onConfirm = { viewModel.removeChecklistItem(index); pendingDeleteItemIndex = null },
             onDismiss = { pendingDeleteItemIndex = null }
         )
+    }
+}
+
+/** WEB_URL/GOOGLE_DOC's plain-URL rendering, also GOOGLE_DRIVE's fallback for a pasted share link. */
+@Composable
+private fun LinkNoteContent(
+    note: NoteEntity,
+    textContent: String,
+    onTextChange: (String) -> Unit,
+    canEdit: Boolean
+) {
+    val context = LocalContext.current
+    OutlinedTextField(
+        value = textContent,
+        onValueChange = onTextChange,
+        readOnly = !canEdit,
+        label = { Text("Link URL", color = Grey500) },
+        singleLine = true,
+        colors = tripTextFieldColors(),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(Modifier.height(8.dp))
+    Card(
+        onClick = {
+            if (textContent.isNotBlank()) {
+                var formattedUrl = textContent.trim()
+                if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
+                    formattedUrl = "https://$formattedUrl"
+                }
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(formattedUrl))
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Invalid link or no browser found", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Please enter a URL first", Toast.LENGTH_SHORT).show()
+            }
+        },
+        colors = CardDefaults.cardColors(containerColor = Navy700),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            val (color, icon) = getNoteTypeVisuals(note.type)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (textContent.isBlank()) "No link entered" else "Open External Link",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = White
+                )
+                if (textContent.isNotBlank()) {
+                    Text(
+                        text = textContent,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Grey500,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Icon(Icons.Filled.OpenInNew, contentDescription = "Open Link", tint = Teal300)
+        }
+    }
+}
+
+/**
+ * A Drive file picked via the system picker (Block 6) — launches its `content://` URI directly.
+ * That grant only exists on the originating device/account, so a `SecurityException` (or any
+ * other launch failure, e.g. a fresh install with no cached grant) falls back to an explanatory
+ * card instead of crashing — matching designmockups/FileDriveNote.png.
+ */
+@Composable
+private fun DrivePickerNoteContent(drive: DrivePickerContent) {
+    val context = LocalContext.current
+    var unavailable by remember(drive.uri) { mutableStateOf(false) }
+
+    Surface(shape = RoundedCornerShape(20.dp), color = LodgingPurple.copy(alpha = 0.15f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Icon(Icons.Filled.Cloud, contentDescription = null, tint = LodgingPurple, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Google Drive", style = MaterialTheme.typography.labelMedium, color = LodgingPurple, fontWeight = FontWeight.Bold)
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(drive.displayName, style = MaterialTheme.typography.titleLarge, color = White, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(12.dp))
+
+    if (!unavailable) {
+        Card(
+            onClick = {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(drive.uri))
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    unavailable = true
+                }
+            },
+            colors = CardDefaults.cardColors(containerColor = Navy700),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Icon(Icons.Filled.Cloud, contentDescription = null, tint = LodgingPurple, modifier = Modifier.size(24.dp))
+                Text("Open", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = White, modifier = Modifier.weight(1f))
+                Icon(Icons.Filled.OpenInNew, contentDescription = "Open", tint = Teal300)
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Grey700, RoundedCornerShape(14.dp))
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = Grey500, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Not available on this device", style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "This file was picked directly from Drive on another device. Ask them to share a Drive link instead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Grey500,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/** A generic `FILE` note (Block 7) — downloads the Storage object on demand, then opens it via `FileProvider`. */
+@Composable
+private fun FileNoteCard(noteId: String, fileContent: FileNoteContent) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isDownloading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Navy700),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Teal200.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = Teal200, modifier = Modifier.size(24.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        fileContent.originalFileName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(fileContent.mimeType, style = MaterialTheme.typography.bodySmall, color = Grey500)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    isDownloading = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val file = withContext(Dispatchers.IO) {
+                                FileNoteHelper.ensureDownloaded(context, noteId, fileContent)
+                            }
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, fileContent.mimeType)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            error = "Couldn't open this file"
+                        } finally {
+                            isDownloading = false
+                        }
+                    }
+                },
+                enabled = !isDownloading,
+                colors = ButtonDefaults.buttonColors(containerColor = Teal300, contentColor = Navy950),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (isDownloading) "Downloading..." else "Open", fontWeight = FontWeight.SemiBold)
+            }
+            error?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed)
+            }
+        }
     }
 }
 

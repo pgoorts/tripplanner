@@ -1,5 +1,9 @@
 package com.pgoorts.tripplanner.ui.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -14,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
@@ -29,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -37,9 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.photo.CoverIllustration
+import com.pgoorts.tripplanner.photo.CoverPhotoStorage
 import com.pgoorts.tripplanner.ui.components.ConfirmDeleteDialog
 import com.pgoorts.tripplanner.ui.components.DatePickerField
+import com.pgoorts.tripplanner.ui.components.TripCoverImage
 import com.pgoorts.tripplanner.ui.theme.*
+import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -144,8 +154,8 @@ fun HomeScreen(
     if (showAddDialog) {
         AddTripDialog(
             onDismiss = { showAddDialog = false },
-            onConfirm = { destination, startDate, endDate ->
-                viewModel.createTrip(destination, startDate, endDate)
+            onConfirm = { destination, startDate, endDate, stagedCoverPhotoPath ->
+                viewModel.createTrip(destination, startDate, endDate, stagedCoverPhotoPath)
                 showAddDialog = false
             }
         )
@@ -240,25 +250,8 @@ private fun LargeTripCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Destination photo placeholder — gradient background
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Navy600, Navy800)
-                        )
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Flight,
-                    contentDescription = null,
-                    tint = Grey700,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .align(Alignment.Center)
-                )
-            }
+            // Destination cover photo (Bug 6) — falls back to a built-in illustration offline.
+            TripCoverImage(trip = trip, modifier = Modifier.fillMaxSize())
 
             // Bottom gradient scrim for text legibility
             Box(
@@ -338,22 +331,13 @@ private fun SmallTripCard(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Small thumbnail placeholder
+            // Small thumbnail — destination cover photo (Bug 6), or its illustration fallback.
             Box(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        Brush.linearGradient(listOf(Navy600, Navy800))
-                    ),
-                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Flight,
-                    contentDescription = null,
-                    tint = Grey700,
-                    modifier = Modifier.size(26.dp)
-                )
+                TripCoverImage(trip = trip, modifier = Modifier.fillMaxSize())
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -427,12 +411,22 @@ private fun EmptyState(onAddClick: () -> Unit) {
 @Composable
 private fun AddTripDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit
+    onConfirm: (String, String, String, String?) -> Unit
 ) {
+    val context = LocalContext.current
     var destination by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var stagedPhotoPath by remember { mutableStateOf<String?>(null) }
+
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            stagedPhotoPath = CoverPhotoStorage.stagePicked(context, uri)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -491,6 +485,60 @@ private fun AddTripDialog(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Text(
+                    text = "COVER PHOTO",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Teal300,
+                    fontWeight = FontWeight.Bold
+                )
+                val staged = stagedPhotoPath
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                    ) {
+                        if (staged != null) {
+                            AsyncImage(
+                                model = File(staged),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            CoverIllustration(destination = destination, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        OutlinedButton(
+                            onClick = {
+                                pickPhotoLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300)
+                        ) {
+                            Icon(Icons.Filled.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (staged != null) "Change photo" else "Choose photo")
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = if (staged != null) {
+                                "Custom photo selected."
+                            } else {
+                                "We'll try to fetch one automatically once you add this trip. Pick your own to override it."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Grey500
+                        )
+                    }
+                }
+
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage!!,
@@ -507,7 +555,7 @@ private fun AddTripDialog(
                     if (error != null) {
                         errorMessage = error
                     } else {
-                        onConfirm(destination.trim(), startDate.trim(), endDate.trim())
+                        onConfirm(destination.trim(), startDate.trim(), endDate.trim(), stagedPhotoPath)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(

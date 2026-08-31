@@ -573,3 +573,99 @@ further — proceeding to Block 5 without another in-container build.
 Not yet started: Block 5 (trip cover images — Places/Unsplash/manual override/illustration
 fallback; the biggest remaining block), Block 6 (Drive picker), Block 7 (File note type), Block 8
 (pkpass picker bug reproduce/fix).
+
+`CoverPhotoFetcher.kt` (Block 5 Step 5.1's fetch service, written ahead of the rest of the block)
+was missing an `import okhttp3.HttpUrl`, breaking `compileReleaseKotlin` — fixed; confirmed with an
+in-container `./gradlew :app:compileReleaseKotlin` (developer's request, one-off) that the module
+compiles clean after the fix. Developer committed that fix directly ("Phase 4:Block 2, 3, 4").
+
+Blocks 5-8 [CODE COMPLETE, not built in-container per the standing preference — developer verifies
+at end of phase]:
+
+Block 5 (Trip Cover Images):
+- New `photo/CoverIllustration.kt`: gradient+icon fallback, destination-keyword match (beach/
+  island -> BeachAccess, mountain/hik -> Terrain, "city"/a short known-capitals list -> LocationCity,
+  else Flight), pure Compose, no network.
+- New `photo/CoverPhotoStorage.kt`: local-only staging (`stageBytes`/`stagePicked`, app-internal
+  `covers/{uuid}.jpg`) plus the deterministic `storagePath(tripId) = "trips/{tripId}/cover.jpg"`
+  reused everywhere a photo gets set.
+- New `ui/components/TripCoverImage.kt`: the one place that resolves "what photo does this trip
+  show" — `localCoverPhotoPath` (freshly staged, not yet synced) first, else `coverPhotoStoragePath`
+  resolved to a Storage download URL via `FirebaseStorage...downloadUrl.await()` and loaded with
+  Coil, else `CoverIllustration`. Used by both Home cards and Trip Settings/Add Trip previews so
+  they can never drift.
+- `TripRepository.createTrip` gained `localCoverPhotoPath`/`coverPhotoSource` params, computing
+  `coverPhotoStoragePath` from the trip's own freshly-generated id when a photo is staged at
+  creation (Add Trip's own picker).
+- `HomeViewModel` (`@ApplicationContext Context` now injected, same pattern as `SyncScheduler`/
+  `PreferencesRepository`): `createTrip` either writes a staged photo straight onto the new row, or
+  (no staged photo) launches a best-effort `CoverPhotoFetcher.fetchCoverPhoto` in a child
+  coroutine that re-reads the trip before writing (never clobbers a `coverPhotoSource` a manual
+  override already set — datastructure.txt §2's race note). Never blocks trip creation.
+- `HomeScreen.kt`: `AddTripDialog` gained a "Cover photo" section (thumbnail preview via
+  `CoverIllustration`/staged `AsyncImage(File(...))`, PickVisualMedia "Choose/Change photo" button,
+  contextual caption) matching designmockups/AddTripPhoto.png; `onConfirm` widened to carry the
+  staged local path. `LargeTripCard`/`SmallTripCard`'s placeholder gradient+Flight-icon Box
+  replaced with `TripCoverImage`.
+- `OpenedTripViewModel` gained `setCoverPhoto(localPath)` (always sets `USER` source — manual
+  always wins). `TripSettingsScreen.kt`'s stubbed "Coming soon" section replaced with the same
+  thumbnail+picker pattern, plus a `coverPhotoCaption()` reflecting the trip's actual
+  `coverPhotoSource`.
+- `SyncWorker.kt`: trip upload map gained `defaultTimezone`/`coverPhotoStoragePath`/
+  `coverPhotoSource` (the `defaultTimezone` one is the opportunistic pre-existing-gap fix the plan
+  flagged, unrelated to item 6 itself); a staged `localCoverPhotoPath` uploads to
+  `coverPhotoStoragePath` independently-retryable exactly like a Pkpass attachment (moved the
+  `FirebaseStorage.getInstance()` declaration earlier in `performUploadFlow` so both trips and
+  notes can use it). Both trip download construction sites (new-row, newer-remote-wins) read the
+  same three fields back.
+- `storage.rules` (repo root): added `/trips/{tripId}/{fileName}` and `/files/{tripId}/{noteId}/
+  {fileName}` match blocks alongside the existing `/pkpass/...` one, reusing its
+  `hasTripAccess`/`isCoOwner` functions — needs `firebase deploy --only storage` from the developer.
+
+Block 6 (Google Drive File Picker, Single-Device):
+- New `DrivePickerContent(uri, displayName)` in `NoteType.kt` (the second `GOOGLE_DRIVE` content
+  shape, datastructure.txt §3).
+- Both `AddNoteDialog` copies (`OpenedTripScreen.kt`/`OpenedEventScreen.kt`): Link kind gained an
+  "or" divider + "Pick from Drive" button (`ActivityResultContracts.OpenDocument()`,
+  `takePersistableUriPermission`) below the URL field, plus the single-device-only caption from
+  designmockups/AddNoteFile.png. Confirm logic prefers a picked Drive file over typed URL text when
+  both/either is present.
+- `OpenedNoteScreen.kt`: extracted the existing WEB_URL/GOOGLE_DOC/plain-URL rendering into a
+  `LinkNoteContent` composable (`GOOGLE_DRIVE` still falls back to it for a pasted share link); a
+  new `DrivePickerNoteContent` tries launching the stored `content://` URI directly and falls back
+  to a "Not available on this device" card (matching designmockups/FileDriveNote.png) on any launch
+  failure (`SecurityException` included) instead of crashing.
+
+Block 7 (New "File" Note Type):
+- New `files/FileNoteHelper.kt`: `FileNoteContent(storagePath, originalFileName, mimeType)`, a
+  direct rerun of `PkpassParser`'s local-storage/storage-path helpers, plus `ensureDownloaded`
+  (download-on-open, cached under app-internal `files/{noteId}/`).
+- Both `AddNoteDialog` copies gained a `FILE` `NoteKind` entry (`ActivityResultContracts.
+  GetContent()`, unfiltered) building the `FileNoteContent` JSON at pick time (storagePath
+  deterministic from tripId/noteId/filename, same as Pkpass).
+- `SyncWorker.kt`: every `note.type == NoteType.PKPASS` attachment-upload/delete check widened to
+  `note.type in listOf(PKPASS, FILE)` — no new sync code path. `PkpassParser.extractStoragePath` is
+  reused as-is (type-agnostic).
+- `OpenedNoteScreen.kt`: the Block-1 "File rendering coming soon" placeholder replaced with a real
+  `FileNoteCard` (filename/MIME type, "Open" button that downloads-if-needed then launches
+  `ACTION_VIEW` via the `FileProvider` plumbing Block 1 already added, per designmockups/
+  FileDriveNote.png).
+
+Block 8 (Pkpass File Picker):
+- Step 8.1 (reproduce on-device) can't be done in this container — no device access. Applied the
+  plan's own fallback fix preemptively rather than leaving it undone: both `AddNoteDialog` copies'
+  Pass picker switched from `ActivityResultContracts.GetContent()` + `"*/*"` to `OpenDocument()` +
+  an explicit `arrayOf("application/zip", "application/octet-stream", "*/*")` MIME array (same
+  framework API family Blocks 6/7 already use). Flagged for the developer to confirm Step 8.1/8.3
+  on a real device per the plan.
+
+Verification done in this pass (no build): full manual review of every touched/new file — brace/
+paren balance checked file-by-file, every new symbol's import traced to its definition, every
+call-site signature matched against its declaration (`TripRepository.createTrip`,
+`HomeViewModel.createTrip`, `AddTripDialog.onConfirm`, `FileNoteHelper.*`, `CoverPhotoStorage.*`).
+Not yet done: an actual `./gradlew` build (per this session's explicit "do not build" instruction),
+and all of Block 5/8's on-device verification steps (5.6, 6.3, 7.4, 8.3) plus provisioning the two
+Block 5 API keys and running `firebase deploy --only storage`.
+
+Once the developer builds, verifies each block's checklist, and deploys the storage rules, every
+item in description.txt can be marked `[COMPLETED]` and Phase 4 is done.

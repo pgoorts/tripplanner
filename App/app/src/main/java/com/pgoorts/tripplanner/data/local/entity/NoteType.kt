@@ -1,5 +1,7 @@
 package com.pgoorts.tripplanner.data.local.entity
 
+import kotlinx.serialization.Serializable
+
 enum class NoteType {
     TEXT_BLOCK,
     CHECKLIST,
@@ -21,3 +23,11 @@ fun classifyNoteUrl(url: String): NoteType {
         else -> NoteType.WEB_URL
     }
 }
+
+/**
+ * A `GOOGLE_DRIVE` note's second `content` shape (item 8): a file picked via the system Drive
+ * picker rather than a pasted share link, per datastructure.txt §3. Rendering distinguishes this
+ * from the plain-URL shape by attempting to parse `content` as this type first.
+ */
+@Serializable
+data class DrivePickerContent(val uri: String, val displayName: String)

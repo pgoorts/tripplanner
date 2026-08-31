@@ -1,0 +1,4 @@
+* Rendering the pkpass does not allow scrolling. Some text is cur off. I also see no qr code, it might be cut off. In any case, put the QR code on top
+* Time zones in adding an event cannot be edited
+* Time zones in the edit event is broken. You cannot search or remve the current timezone. Typing adds text, but is also not removable after that
+* No picture fetched for a trip. I only used google places. See logcat.txt. I see no API calls in the console

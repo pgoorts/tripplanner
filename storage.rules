@@ -21,5 +21,17 @@ service firebase.storage {
       allow read: if hasTripAccess(tripId);
       allow write: if isCoOwner(tripId);
     }
+
+    // Phase 4, item 6: trip cover photos (auto-fetched or user-picked).
+    match /trips/{tripId}/{fileName} {
+      allow read: if hasTripAccess(tripId);
+      allow write: if isCoOwner(tripId);
+    }
+
+    // Phase 4, item 9: generic File note attachments.
+    match /files/{tripId}/{noteId}/{fileName} {
+      allow read: if hasTripAccess(tripId);
+      allow write: if isCoOwner(tripId);
+    }
   }
 }

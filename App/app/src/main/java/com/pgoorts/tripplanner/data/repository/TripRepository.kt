@@ -4,6 +4,7 @@ import com.pgoorts.tripplanner.data.local.dao.TripDao
 import com.pgoorts.tripplanner.data.local.entity.SyncState
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.local.entity.TripRole
+import com.pgoorts.tripplanner.photo.CoverPhotoStorage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
@@ -24,11 +25,18 @@ class TripRepository @Inject constructor(
         tripDao.insertTrip(trip)
     }
 
+    /**
+     * [localCoverPhotoPath]/[coverPhotoSource] let a trip be created with a photo already staged
+     * (Add Trip's own picker, Block 5 Step 5.3) — written directly onto the new row instead of a
+     * separate update call, same as the auto-fetch path does after the fact.
+     */
     suspend fun createTrip(
         destination: String,
         startDate: String,
         endDate: String,
-        ownerEmail: String = ""
+        ownerEmail: String = "",
+        localCoverPhotoPath: String? = null,
+        coverPhotoSource: String? = null
     ): TripEntity {
         val collaborators = if (ownerEmail.isNotBlank()) {
             """{"$ownerEmail":"CO_OWNER"}"""
@@ -36,12 +44,16 @@ class TripRepository @Inject constructor(
             "{}"
         }
         val now = System.currentTimeMillis()
+        val id = UUID.randomUUID().toString()
         val trip = TripEntity(
-            id = UUID.randomUUID().toString(),
+            id = id,
             destination = destination,
             startDate = startDate,
             endDate = endDate,
             collaborators = collaborators,
+            coverPhotoStoragePath = if (localCoverPhotoPath != null) CoverPhotoStorage.storagePath(id) else null,
+            coverPhotoSource = coverPhotoSource,
+            localCoverPhotoPath = localCoverPhotoPath,
             createdAt = now,
             updatedAt = now,
             syncState = SyncState.PENDING_INSERT

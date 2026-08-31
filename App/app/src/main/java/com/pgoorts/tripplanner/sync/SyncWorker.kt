@@ -90,6 +90,8 @@ class SyncWorker(
         reminderDao: ReminderDao,
         packingTemplateDao: PackingTemplateDao
     ) {
+        val storage = FirebaseStorage.getInstance()
+
         // --- Upload Trips ---
         val pendingTrips = tripDao.getPendingSyncTrips()
         for (trip in pendingTrips) {
@@ -100,16 +102,49 @@ class SyncWorker(
                     } catch (e: Exception) {
                         emptyMap()
                     }
+                    // A staged cover photo (auto-fetched or user-picked) uploads to Storage
+                    // independently of the trip document, exactly like a Pkpass/File note's
+                    // attachment below — a transient Storage failure here doesn't block the
+                    // trip's own fields from syncing. coverPhotoStoragePath is already
+                    // deterministic (set when the photo was staged), so it's written to
+                    // Firestore regardless of whether the Storage upload has finished yet.
+                    val localCoverPhotoPath = trip.localCoverPhotoPath
+                    var attachmentSynced = true
+                    if (localCoverPhotoPath != null && trip.coverPhotoStoragePath != null) {
+                        attachmentSynced = try {
+                            storage.reference.child(trip.coverPhotoStoragePath)
+                                .putFile(Uri.fromFile(File(localCoverPhotoPath)))
+                                .await()
+                            true
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            false
+                        }
+                    }
                     val data = mapOf(
                         "destination" to trip.destination,
                         "startDate" to trip.startDate,
                         "endDate" to trip.endDate,
                         "collaborators" to collaboratorsMap,
+                        "defaultTimezone" to trip.defaultTimezone,
+                        "coverPhotoStoragePath" to trip.coverPhotoStoragePath,
+                        "coverPhotoSource" to trip.coverPhotoSource,
                         "createdAt" to trip.createdAt,
                         "updatedAt" to trip.updatedAt
                     )
                     db.collection("trips").document(trip.id).set(data).await()
-                    tripDao.insertTrip(trip.copy(syncState = SyncState.SYNCED, lastSyncedAt = System.currentTimeMillis()))
+                    if (attachmentSynced) {
+                        if (localCoverPhotoPath != null) File(localCoverPhotoPath).delete()
+                        tripDao.insertTrip(
+                            trip.copy(
+                                syncState = SyncState.SYNCED,
+                                lastSyncedAt = System.currentTimeMillis(),
+                                localCoverPhotoPath = null
+                            )
+                        )
+                    }
+                    // else: leave syncState as-is; the next sync pass retries the Storage upload
+                    // (the Firestore write above is idempotent, so re-running it is harmless).
                 }
                 SyncState.PENDING_DELETE -> {
                     db.collection("trips").document(trip.id).delete().await()
@@ -159,7 +194,6 @@ class SyncWorker(
         }
 
         // --- Upload Notes ---
-        val storage = FirebaseStorage.getInstance()
         val pendingNotes = noteDao.getPendingSyncNotes()
         for (note in pendingNotes) {
             when (note.syncState) {
@@ -171,7 +205,7 @@ class SyncWorker(
                     // local cached copy cleared, once BOTH have succeeded.
                     val localAttachmentPath = note.localAttachmentPath
                     var attachmentSynced = true
-                    if (note.type == NoteType.PKPASS && localAttachmentPath != null) {
+                    if (note.type in listOf(NoteType.PKPASS, NoteType.FILE) && localAttachmentPath != null) {
                         val storagePath = PkpassParser.extractStoragePath(note.content)
                         attachmentSynced = if (storagePath != null) {
                             try {
@@ -200,7 +234,7 @@ class SyncWorker(
                         .set(data).await()
 
                     if (attachmentSynced) {
-                        if (note.type == NoteType.PKPASS && localAttachmentPath != null) {
+                        if (note.type in listOf(NoteType.PKPASS, NoteType.FILE) && localAttachmentPath != null) {
                             File(localAttachmentPath).delete()
                         }
                         noteDao.insertNote(
@@ -218,7 +252,7 @@ class SyncWorker(
                     db.collection("trips").document(note.tripId)
                         .collection("notes").document(note.id)
                         .delete().await()
-                    if (note.type == NoteType.PKPASS) {
+                    if (note.type in listOf(NoteType.PKPASS, NoteType.FILE)) {
                         PkpassParser.extractStoragePath(note.content)?.let { storagePath ->
                             try {
                                 storage.reference.child(storagePath).delete().await()
@@ -322,9 +356,12 @@ class SyncWorker(
             val remoteStartDate = tripDoc.getString("startDate") ?: ""
             val remoteEndDate = tripDoc.getString("endDate") ?: ""
             val remoteCollaboratorsMap = tripDoc.get("collaborators") as? Map<*, *> ?: emptyMap<Any, Any>()
-            val remoteCollaborators = remoteCollaboratorsMap.entries.associate { 
-                it.key.toString() to it.value.toString() 
+            val remoteCollaborators = remoteCollaboratorsMap.entries.associate {
+                it.key.toString() to it.value.toString()
             }
+            val remoteDefaultTimezone = tripDoc.getString("defaultTimezone")
+            val remoteCoverPhotoStoragePath = tripDoc.getString("coverPhotoStoragePath")
+            val remoteCoverPhotoSource = tripDoc.getString("coverPhotoSource")
             val remoteCreatedAt = tripDoc.getLong("createdAt") ?: 0L
             val remoteUpdatedAt = tripDoc.getLong("updatedAt") ?: 0L
 
@@ -338,6 +375,9 @@ class SyncWorker(
                     startDate = remoteStartDate,
                     endDate = remoteEndDate,
                     collaborators = collaboratorsJson,
+                    defaultTimezone = remoteDefaultTimezone,
+                    coverPhotoStoragePath = remoteCoverPhotoStoragePath,
+                    coverPhotoSource = remoteCoverPhotoSource,
                     createdAt = remoteCreatedAt,
                     updatedAt = remoteUpdatedAt,
                     syncState = SyncState.SYNCED,
@@ -351,6 +391,9 @@ class SyncWorker(
                         startDate = remoteStartDate,
                         endDate = remoteEndDate,
                         collaborators = collaboratorsJson,
+                        defaultTimezone = remoteDefaultTimezone,
+                        coverPhotoStoragePath = remoteCoverPhotoStoragePath,
+                        coverPhotoSource = remoteCoverPhotoSource,
                         createdAt = remoteCreatedAt,
                         updatedAt = remoteUpdatedAt,
                         syncState = SyncState.SYNCED,

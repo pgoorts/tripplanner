@@ -17,6 +17,8 @@ import com.pgoorts.tripplanner.data.repository.NoteRepository
 import com.pgoorts.tripplanner.data.repository.PreferencesRepository
 import com.pgoorts.tripplanner.data.repository.ReminderRepository
 import com.pgoorts.tripplanner.data.repository.TripRepository
+import com.pgoorts.tripplanner.photo.CoverPhotoSource
+import com.pgoorts.tripplanner.photo.CoverPhotoStorage
 import com.pgoorts.tripplanner.sync.SyncScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.work.WorkInfo
@@ -346,6 +348,20 @@ class OpenedTripViewModel @Inject constructor(
         val trip = uiState.value.trip ?: return
         viewModelScope.launch {
             tripRepository.updateTrip(trip.copy(startDate = startDate, endDate = endDate))
+        }
+    }
+
+    /** Manual cover-photo override (Bug 6) — always wins over an auto-fetched photo, past or future. */
+    fun setCoverPhoto(localPath: String) {
+        val trip = uiState.value.trip ?: return
+        viewModelScope.launch {
+            tripRepository.updateTrip(
+                trip.copy(
+                    localCoverPhotoPath = localPath,
+                    coverPhotoStoragePath = CoverPhotoStorage.storagePath(trip.id),
+                    coverPhotoSource = CoverPhotoSource.USER
+                )
+            )
         }
     }
 }

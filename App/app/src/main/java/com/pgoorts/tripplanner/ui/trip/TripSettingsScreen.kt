@@ -2,6 +2,10 @@
 
 package com.pgoorts.tripplanner.ui.trip
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,11 +18,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pgoorts.tripplanner.data.local.entity.TripEntity
+import com.pgoorts.tripplanner.photo.CoverPhotoSource
+import com.pgoorts.tripplanner.photo.CoverPhotoStorage
 import com.pgoorts.tripplanner.ui.components.DatePickerField
 import com.pgoorts.tripplanner.ui.components.TimezonePickerDialog
+import com.pgoorts.tripplanner.ui.components.TripCoverImage
 import com.pgoorts.tripplanner.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -37,11 +46,20 @@ fun TripSettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val globalDefaultTimezone by viewModel.globalDefaultTimezone.collectAsState()
     val trip = uiState.trip
+    val context = LocalContext.current
 
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var dateError by remember { mutableStateOf<String?>(null) }
     var showTimezonePicker by remember { mutableStateOf(false) }
+
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.setCoverPhoto(CoverPhotoStorage.stagePicked(context, uri))
+        }
+    }
 
     LaunchedEffect(trip?.id) {
         trip?.let {
@@ -192,17 +210,46 @@ fun TripSettingsScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            item {
-                Text(
-                    "Cover photo",
-                    style = MaterialTheme.typography.titleSmall.copy(color = Teal300, fontWeight = FontWeight.Bold)
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Coming soon.",
-                    style = MaterialTheme.typography.bodySmall.copy(color = Grey500)
-                )
-                Spacer(Modifier.height(24.dp))
+            if (trip != null) {
+                item {
+                    Text(
+                        "Cover photo",
+                        style = MaterialTheme.typography.titleSmall.copy(color = Teal300, fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                        ) {
+                            TripCoverImage(trip = trip, modifier = Modifier.fillMaxSize())
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = {
+                                    pickPhotoLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300)
+                            ) {
+                                Icon(Icons.Filled.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Change photo")
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                coverPhotoCaption(trip),
+                                style = MaterialTheme.typography.bodySmall.copy(color = Grey500)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
     }
@@ -213,6 +260,13 @@ fun TripSettingsScreen(
             onSelect = { zone -> viewModel.setTripDefaultTimezone(zone); showTimezonePicker = false }
         )
     }
+}
+
+private fun coverPhotoCaption(trip: TripEntity): String = when (trip.coverPhotoSource) {
+    CoverPhotoSource.USER -> "You've set a custom cover photo."
+    CoverPhotoSource.AUTO_PLACES, CoverPhotoSource.AUTO_UNSPLASH ->
+        "Fetched automatically from \"${trip.destination}\". Pick your own to override it."
+    else -> "No cover photo yet — showing a built-in illustration."
 }
 
 private fun formatTripDateRange(startDate: String, endDate: String): String = try {

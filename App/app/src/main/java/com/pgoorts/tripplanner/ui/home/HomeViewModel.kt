@@ -1,12 +1,18 @@
 package com.pgoorts.tripplanner.ui.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pgoorts.tripplanner.auth.UserSessionManager
 import com.pgoorts.tripplanner.data.local.entity.TripEntity
 import com.pgoorts.tripplanner.data.repository.TripRepository
+import com.pgoorts.tripplanner.photo.CoverPhotoFetcher
+import com.pgoorts.tripplanner.photo.CoverPhotoSource
+import com.pgoorts.tripplanner.photo.CoverPhotoStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,6 +28,7 @@ data class HomeUiState(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val tripRepository: TripRepository,
     private val userSessionManager: UserSessionManager
 ) : ViewModel() {
@@ -55,14 +62,39 @@ class HomeViewModel @Inject constructor(
             initialValue = HomeUiState()
         )
 
-    fun createTrip(destination: String, startDate: String, endDate: String) {
+    /**
+     * [stagedCoverPhotoPath] is set when the user picked their own photo in Add Trip; otherwise
+     * a best-effort auto-fetch (Bug 6) runs after creation and never blocks the trip from
+     * appearing — a failed/slow fetch just leaves the offline illustration fallback in place.
+     */
+    fun createTrip(destination: String, startDate: String, endDate: String, stagedCoverPhotoPath: String? = null) {
         viewModelScope.launch {
-            tripRepository.createTrip(
+            val trip = tripRepository.createTrip(
                 destination = destination,
                 startDate = startDate,
                 endDate = endDate,
-                ownerEmail = userSessionManager.userEmail ?: ""
+                ownerEmail = userSessionManager.userEmail ?: "",
+                localCoverPhotoPath = stagedCoverPhotoPath,
+                coverPhotoSource = if (stagedCoverPhotoPath != null) CoverPhotoSource.USER else null
             )
+            if (stagedCoverPhotoPath == null) {
+                launch {
+                    val result = CoverPhotoFetcher.fetchCoverPhoto(trip.destination) ?: return@launch
+                    // Re-read before writing — a manual override from Trip Settings could have
+                    // raced this fetch and already set a source, which must never be clobbered.
+                    val current = tripRepository.getTripById(trip.id).first()
+                    if (current != null && current.coverPhotoSource == null) {
+                        val localPath = CoverPhotoStorage.stageBytes(context, result.bytes)
+                        tripRepository.updateTrip(
+                            current.copy(
+                                localCoverPhotoPath = localPath,
+                                coverPhotoStoragePath = CoverPhotoStorage.storagePath(current.id),
+                                coverPhotoSource = result.source
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 

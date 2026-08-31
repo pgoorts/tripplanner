@@ -42,7 +42,10 @@ import com.pgoorts.tripplanner.data.local.entity.EventCategory
 import com.pgoorts.tripplanner.data.local.entity.EventEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteEntity
 import com.pgoorts.tripplanner.data.local.entity.NoteType
+import com.pgoorts.tripplanner.data.local.entity.DrivePickerContent
 import com.pgoorts.tripplanner.data.local.entity.classifyNoteUrl
+import com.pgoorts.tripplanner.files.FileNoteContent
+import com.pgoorts.tripplanner.files.FileNoteHelper
 import com.pgoorts.tripplanner.pkpass.PkpassContent
 import com.pgoorts.tripplanner.pkpass.PkpassParser
 import com.pgoorts.tripplanner.data.local.entity.ReminderEntity
@@ -1061,7 +1064,8 @@ private enum class NoteKind(val label: String) {
     TEXT_BLOCK("Text Block"),
     CHECKLIST("Checklist"),
     LINK("Link (paste a URL)"),
-    PASS("Pass (.pkpass)")
+    PASS("Pass (.pkpass)"),
+    FILE("File")
 }
 
 @Composable
@@ -1082,9 +1086,16 @@ private fun AddNoteDialog(
     var pkpassLocalPath by remember { mutableStateOf<String?>(null) }
     var pkpassFileName by remember { mutableStateOf<String?>(null) }
     var isParsingPkpass by remember { mutableStateOf(false) }
+    var driveUri by remember { mutableStateOf<Uri?>(null) }
+    var driveDisplayName by remember { mutableStateOf<String?>(null) }
+    var fileLocalPath by remember { mutableStateOf<String?>(null) }
+    var fileDisplayName by remember { mutableStateOf<String?>(null) }
+    var fileMimeType by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val pickPkpassLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    // Block 8: OpenDocument() + an explicit MIME array (instead of GetContent() + "*/*") so file
+    // managers that don't recognize .pkpass reliably surface/select it.
+    val pickPkpassLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         isParsingPkpass = true
         error = null
@@ -1111,6 +1122,35 @@ private fun AddNoteDialog(
             pkpassFileName = originalFileName
             if (title.isBlank()) title = parsed.description.ifBlank { originalFileName }
             isParsingPkpass = false
+        }
+    }
+
+    // Block 6: pick a Drive file via the system picker instead of pasting a share link — opens
+    // only on this device/account (description_detail.txt §9).
+    val pickDriveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val name = PkpassParser.queryDisplayName(context, uri)
+        driveUri = uri
+        driveDisplayName = name
+        error = null
+        if (title.isBlank()) title = name
+    }
+
+    // Block 7: generic file attachment, a direct rerun of the Pass flow above.
+    val pickFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        error = null
+        scope.launch {
+            val name = PkpassParser.queryDisplayName(context, uri)
+            val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val localPath = withContext(Dispatchers.IO) {
+                FileNoteHelper.copyToLocalStorage(context, uri, noteId, name)
+            }
+            fileLocalPath = localPath
+            fileDisplayName = name
+            fileMimeType = mimeType
+            if (title.isBlank()) title = name
         }
     }
 
@@ -1153,7 +1193,7 @@ private fun AddNoteDialog(
                     NoteKind.LINK -> {
                         OutlinedTextField(
                             value = urlText,
-                            onValueChange = { urlText = it; error = null },
+                            onValueChange = { urlText = it; error = null; driveUri = null; driveDisplayName = null },
                             label = { Text("URL", color = Grey500) },
                             singleLine = true,
                             colors = tripTextFieldColors(),
@@ -1166,11 +1206,30 @@ private fun AddNoteDialog(
                                 color = Grey500
                             )
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Divider(modifier = Modifier.weight(1f), color = Grey700)
+                            Text("or", style = MaterialTheme.typography.bodySmall, color = Grey500)
+                            Divider(modifier = Modifier.weight(1f), color = Grey700)
+                        }
+                        OutlinedButton(
+                            onClick = { pickDriveLauncher.launch(arrayOf("*/*")) },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(driveDisplayName ?: "Pick from Drive")
+                        }
+                        Text(
+                            "Only opens on this device & account. To let collaborators open it too, paste a Drive share link instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Grey500
+                        )
                     }
 
                     NoteKind.PASS -> {
                         OutlinedButton(
-                            onClick = { pickPkpassLauncher.launch("*/*") },
+                            onClick = { pickPkpassLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
                             enabled = !isParsingPkpass,
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300),
                             modifier = Modifier.fillMaxWidth()
@@ -1186,6 +1245,18 @@ private fun AddNoteDialog(
                             )
                         }
                     }
+
+                    NoteKind.FILE -> {
+                        OutlinedButton(
+                            onClick = { pickFileLauncher.launch("*/*") },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Teal300),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(fileDisplayName ?: "Choose file")
+                        }
+                    }
                 }
 
                 error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ErrorRed) }
@@ -1199,14 +1270,32 @@ private fun AddNoteDialog(
                         NoteKind.TEXT_BLOCK -> onConfirm(title.trim(), NoteType.TEXT_BLOCK, "", null, noteId)
                         NoteKind.CHECKLIST -> onConfirm(title.trim(), NoteType.CHECKLIST, "", null, noteId)
                         NoteKind.LINK -> {
-                            if (urlText.isBlank()) { error = "Please enter a URL"; return@Button }
-                            onConfirm(title.trim(), classifyNoteUrl(urlText), urlText.trim(), null, noteId)
+                            val uri = driveUri
+                            if (uri != null) {
+                                val content = Json.encodeToString(
+                                    DrivePickerContent(uri = uri.toString(), displayName = driveDisplayName ?: "File")
+                                )
+                                onConfirm(title.trim(), NoteType.GOOGLE_DRIVE, content, null, noteId)
+                            } else {
+                                if (urlText.isBlank()) { error = "Please enter a URL or pick a file from Drive"; return@Button }
+                                onConfirm(title.trim(), classifyNoteUrl(urlText), urlText.trim(), null, noteId)
+                            }
                         }
                         NoteKind.PASS -> {
                             val content = pkpassContent
                             val localPath = pkpassLocalPath
                             if (content == null || localPath == null) { error = "Please choose a .pkpass file"; return@Button }
                             onConfirm(title.trim(), NoteType.PKPASS, Json.encodeToString(content), localPath, noteId)
+                        }
+                        NoteKind.FILE -> {
+                            val localPath = fileLocalPath
+                            val name = fileDisplayName
+                            if (localPath == null || name == null) { error = "Please choose a file"; return@Button }
+                            val storagePath = FileNoteHelper.buildStoragePath(tripId, noteId, name)
+                            val content = Json.encodeToString(
+                                FileNoteContent(storagePath = storagePath, originalFileName = name, mimeType = fileMimeType ?: "application/octet-stream")
+                            )
+                            onConfirm(title.trim(), NoteType.FILE, content, localPath, noteId)
                         }
                     }
                 },
@@ -1222,6 +1311,7 @@ private fun noteKindIcon(kind: NoteKind): ImageVector = when (kind) {
     NoteKind.CHECKLIST -> Icons.Filled.Checklist
     NoteKind.LINK -> Icons.Filled.Link
     NoteKind.PASS -> Icons.Filled.CreditCard
+    NoteKind.FILE -> Icons.Filled.InsertDriveFile
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
